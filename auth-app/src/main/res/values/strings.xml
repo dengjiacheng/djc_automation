@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Automation Control</string>
+    <string name="hint_server_url">服务器地址 (例如 http://10.0.0.1:8000)</string>
+    <string name="hint_username">用户名</string>
+    <string name="hint_password">密码</string>
+    <string name="button_launch">登录&amp;启动</string>
+    <string name="button_stop">停止</string>
+    <string name="title_logs">运行日志</string>
+    <string name="title_dashboard">设备自动化控制台</string>
+    <string name="label_server_section">连接信息</string>
+    <string name="label_log_placeholder">等待操作…</string>
+</resources>

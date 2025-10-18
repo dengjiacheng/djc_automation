@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}设备操作 - Android自动化平台{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/control.css') }}?v={{ request.app.state.static_version }}">
+{% endblock %}
+
+{% block body %}
+<div class="app-shell control-shell">
+    <header class="topbar control-topbar">
+        <div class="container-wide">
+            <div class="topbar-brand">
+                <span class="brand-dot"></span>
+                设备操作控制台
+            </div>
+            <div class="topbar-meta">
+                <span class="avatar-chip" id="admin-info">管理员: 加载中...</span>
+                <button class="btn btn--danger" id="logoutBtn">退出</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="app-main">
+        <div class="container-wide stack-lg">
+            <section class="card selection-card" id="selection-card">
+                <div class="card-toolbar">
+                    <div>
+                        <h2 class="section-title">选择设备</h2>
+                        <p class="section-subtitle">选择目标用户和设备以进行远程控制与调试。</p>
+                    </div>
+                    <button class="btn btn--ghost" type="button" id="refreshUsersBtn">刷新列表</button>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="username">选择用户：</label>
+                        <select class="form-control" id="username">
+                            <option value="">-- 请选择用户 --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="device">选择设备：</label>
+                        <select class="form-control" id="device">
+                            <option value="">-- 请先选择用户 --</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card control-card" id="control-area">
+                <div class="control-header">
+                    <div>
+                        <h2 class="section-title">操作面板</h2>
+                        <p class="section-subtitle">左侧为设备信息与能力，右侧为实时预览、自定义指令和执行日志。</p>
+                    </div>
+                    <span class="connection-indicator" id="websocketStatus">WebSocket：连接中...</span>
+                </div>
+
+                <div class="control-layout">
+                    <aside class="control-sidebar">
+                        <section class="device-card" id="device-info">
+                            <div class="device-info-header">
+                                <div>
+                                    <div class="device-name" id="deviceNameDisplay">尚未选择设备</div>
+                                    <div class="device-username" id="deviceUsernameDisplay">请先选择用户与设备</div>
+                                </div>
+                                <span class="status-badge" id="deviceStatusBadge">未连接</span>
+                            </div>
+                            <div class="device-meta" id="deviceMeta">
+                                <div id="device-details" class="device-details">
+                                    <p class="empty">在上方选择设备后即可查看状态与操作。</p>
+                                </div>
+                            </div>
+                            <div class="device-info-footer">
+                                <span class="device-last-online" id="deviceLastOnline">最后在线：-</span>
+                                <button class="btn btn--outline" type="button" id="refreshDeviceBtn">刷新状态</button>
+                            </div>
+                        </section>
+
+                        <section class="quick-actions">
+                            <h3 class="panel-title">快捷操作</h3>
+                            <p class="quick-actions-tip">常用操作会在右侧显示结果。</p>
+                            <div class="btn-group vertical">
+                                <button class="btn btn--success" id="captureBtn">
+                                    <span id="screenshot-text">截图</span>
+                                </button>
+                                <button class="btn btn--primary" id="dumpBtn">
+                                    <span id="dump-text">Dump界面</span>
+                                </button>
+                            </div>
+                        </section>
+
+                        <section class="capabilities-section" id="capabilities-section">
+                            <div class="capabilities-header">
+                                <h3 class="panel-title">设备能力</h3>
+                            </div>
+                            <div class="capability-selector">
+                                <select id="capability-select" class="form-control" disabled>
+                                    <option value="">-- 请先选择设备 --</option>
+                                </select>
+                            </div>
+                            <p class="capability-hint" id="capability-hint">选择能力可快速填充自定义指令</p>
+                        </section>
+                    </aside>
+
+                    <div class="control-content">
+                        <div class="preview-card">
+                            <div class="dump-preview-wrapper">
+                                <div id="screenshot-preview" class="screenshot-panel">
+                                    <h3 class="panel-title">设备截图</h3>
+                                    <div id="screenshot-container" class="screenshot-container">
+                                        <img id="screenshot-img" src="" alt="截图">
+                                        <div id="screenshot-highlight" class="screenshot-highlight"></div>
+                                    </div>
+                                </div>
+
+                                <div id="dump-panels" class="dump-panels">
+                                    <div class="dump-panel-header">
+                                        <h4>界面结构</h4>
+                                        <input
+                                            id="dump-search"
+                                            class="dump-search form-control"
+                                            type="text"
+                                            placeholder="搜索标签、resource-id、text、content-desc..."
+                                        >
+                                    </div>
+                                    <div id="dump-summary" class="dump-summary"></div>
+                                    <div class="dump-details-grid">
+                                        <div class="dump-tree-panel">
+                                            <h5>节点树</h5>
+                                            <div id="dump-tree" class="dump-tree"></div>
+                                        </div>
+                                        <div class="dump-attributes-panel">
+                                            <h5>节点属性</h5>
+                                            <div id="dump-attributes-content" class="dump-attributes-content">
+                                                <p class="empty">尚未选择节点</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <section class="command-section">
+                            <h3 class="panel-title">自定义指令</h3>
+                            <p class="section-tip">可以直接粘贴 JSON，或通过左侧设备能力快速填入模板。</p>
+                            <textarea
+                                id="command-input"
+                                placeholder='{"action": "click", "params": {"x": 100, "y": 200}}'
+                            ></textarea>
+                            <div class="command-actions">
+                                <button class="btn btn--primary" id="sendCommandBtn">发送指令</button>
+                                <button class="btn btn--ghost" type="button" id="clearCommandBtn">清空输入</button>
+                            </div>
+                        </section>
+
+                        <section class="result-section">
+                            <h3 class="panel-title">执行日志</h3>
+                            <div class="result-area" id="result"></div>
+                        </section>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" defer></script>
+<script src="{{ url_for('static', path='js/control.js') }}?v={{ request.app.state.static_version }}" defer></script>
+{% endblock %}

@@ -1,0 +1,30 @@
+{
+  "folders": [
+    {
+      "path": "../../android-automation-server"
+    },
+    {
+      "path": "../../claude-p/V6"
+    }
+  ],
+  "settings": {
+    "claude-code.environmentVariables": [
+      {
+        "name": "HTTP_PROXY",
+        "value": "http://127.0.0.1:7890"
+      },
+      {
+        "name": "HTTPS_PROXY",
+        "value": "http://127.0.0.1:7890"
+      },
+      {
+        "name": "http_proxy",
+        "value": "http://127.0.0.1:7890"
+      },
+      {
+        "name": "https_proxy",
+        "value": "http://127.0.0.1:7890"
+      }
+    ]
+  }
+}

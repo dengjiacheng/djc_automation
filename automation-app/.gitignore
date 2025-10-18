@@ -1,0 +1,15 @@
+.DS_Store
+/.gradle/
+/build/
+/captures/
+.cxx/
+local.properties
+.idea/
+*.iml
+*.apk
+*.ap_
+*.aab
+/out/
+/tmp/
+/intermediates/
+/generated/

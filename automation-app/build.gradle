@@ -1,0 +1,61 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.automation'
+    compileSdk 36
+    ndkVersion "25.1.8937393"
+
+    defaultConfig {
+        applicationId "com.automation"
+        minSdk 21
+        targetSdk 36
+        versionCode 1
+        versionName "1.0.2"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('../keystore/release.jks')
+            storePassword 'automate2024'
+            keyAlias 'release-key'
+            keyPassword 'automate2024'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+        debug {
+            debuggable true
+        }
+    }
+
+
+    packaging {
+        resources {
+            excludes += ['LICENSE.txt', 'META-INF/LICENSE', 'META-INF/NOTICE']
+        }
+    }
+    
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // 测试APK：包含所有功能（包括 OpenCV）
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+    androidTestImplementation 'androidx.test:rules:1.5.0'
+    androidTestImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+    androidTestImplementation 'org.yaml:snakeyaml:1.33'
+    androidTestImplementation project(':opencv')
+}

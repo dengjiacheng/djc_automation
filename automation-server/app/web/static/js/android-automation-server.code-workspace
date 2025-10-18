@@ -1,0 +1,14 @@
+{
+  "folders": [
+    {
+      "path": "../../../.."
+    },
+    {
+      "path": "../../../../../android-automation/auth-app"
+    },
+    {
+      "path": "../../../../../android-automation"
+    }
+  ],
+  "settings": {}
+}

@@ -1,0 +1,92 @@
+/* 登录页：继承基础主题，突出品牌与简洁交互 */
+.auth-shell {
+    background: radial-gradient(circle at top left, rgba(99, 102, 241, 0.18), transparent 45%),
+                radial-gradient(circle at 20% 80%, rgba(14, 165, 233, 0.2), transparent 55%),
+                var(--color-background);
+}
+
+.auth-main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(32px, 6vw, 64px) 24px;
+}
+
+.auth-card {
+    width: min(420px, 94vw);
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    border: 1px solid rgba(99, 102, 241, 0.1);
+    padding: clamp(32px, 4vw, 48px);
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.auth-logo {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.auth-logo h1 {
+    font-size: 1.875rem;
+    font-weight: 700;
+    color: var(--color-text);
+}
+
+.auth-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.12);
+    color: var(--color-primary-dark);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.auth-form {
+    gap: 20px;
+}
+
+.auth-form .form-control {
+    height: 48px;
+}
+
+.auth-footer {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    text-align: center;
+}
+
+.w-full {
+    width: 100%;
+}
+
+@keyframes auth-shake {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    25% {
+        transform: translateX(-10px);
+    }
+    75% {
+        transform: translateX(10px);
+    }
+}
+
+.auth-card.shake {
+    animation: auth-shake 0.32s ease;
+}
+
+@media (max-width: 640px) {
+    .auth-card {
+        padding: 32px 24px;
+    }
+}

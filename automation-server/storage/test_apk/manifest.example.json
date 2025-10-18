@@ -1,0 +1,23 @@
+{
+  "artifacts": [
+    {
+      "version": "1.0.0",
+      "version_code": 1,
+      "app": {
+        "file": "automation-app-debug-v1.apk",
+        "package_name": "com.automation",
+        "version_code": 100,
+        "version_name": "1.0.0",
+        "checksum_sha256": "替换为主应用APK的SHA-256校验值"
+      },
+      "test": {
+        "file": "automation-app-debug-androidTest-v1.apk",
+        "package_name": "com.automation.test",
+        "version_code": 100,
+        "version_name": "1.0.0",
+        "checksum_sha256": "替换为测试APK的SHA-256校验值"
+      },
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}

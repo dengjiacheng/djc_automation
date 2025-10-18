@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}管理后台 - Android自动化控制系统{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/admin.css') }}?v={{ request.app.state.static_version }}">
+{% endblock %}
+
+{% block body %}
+<div class="app-shell admin-shell">
+    <header class="topbar">
+        <div class="container-wide">
+            <div class="topbar-brand">
+                <span class="brand-dot"></span>
+                Android 自动化控制系统
+            </div>
+            <div class="topbar-meta">
+                <span class="avatar-chip" id="userInfo">加载中...</span>
+                <button class="btn btn--outline" id="controlBtn">设备操作</button>
+                <button class="btn btn--danger" id="logoutBtn">退出登录</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="app-main">
+        <div class="container-wide stack-lg">
+            <section class="card stats-card">
+                <header class="card-toolbar">
+                    <div>
+                        <h2>运行概览</h2>
+                        <p class="muted">实时掌握平台设备与指令状态</p>
+                    </div>
+                </header>
+                <div class="stats-grid">
+                    <article class="stat-card">
+                        <h3>设备总数</h3>
+                        <div class="value" id="totalDevices">0</div>
+                        <p class="muted">已注册设备数量</p>
+                    </article>
+                    <article class="stat-card is-success">
+                        <h3>在线设备</h3>
+                        <div class="value" id="onlineDevices">0</div>
+                        <p class="muted">当前可远程控制</p>
+                    </article>
+                    <article class="stat-card is-warning">
+                        <h3>离线设备</h3>
+                        <div class="value" id="offlineDevices">0</div>
+                        <p class="muted">需排查网络或服务状态</p>
+                    </article>
+                    <article class="stat-card">
+                        <h3>今日指令</h3>
+                        <div class="value" id="todayCommands">0</div>
+                        <p class="muted">UTC 零点至今的指令量</p>
+                    </article>
+                </div>
+            </section>
+
+            <section>
+                <div class="tabs">
+                    <button class="tab" data-tab="apk">APK 管理</button>
+                    <button class="tab active" data-tab="devices">设备管理</button>
+                    <button class="tab hidden" data-tab="admins" id="adminsTab">管理员</button>
+                </div>
+
+                <section class="tab-content" id="apkContent">
+                    <div class="tab-panel stack-lg">
+                        <div class="apk-board">
+                            <div class="card apk-card" id="apkInfoCard">
+                                <div class="loading">加载中...</div>
+                            </div>
+                            <div class="card apk-card">
+                                <header class="card-toolbar">
+                                    <div>
+                                        <h2>上传 / 更新测试 APK</h2>
+                                        <p class="muted">提交应用与测试包以更新设备端测试套件</p>
+                                    </div>
+                                    <button class="btn btn--ghost" type="button" id="refreshApkBtn">刷新信息</button>
+                                </header>
+                                <form id="apkUploadForm" class="stack">
+                                    <div class="form-group">
+                                        <label for="appApkFile">主应用 APK</label>
+                                        <input class="form-control" id="appApkFile" name="app_file" type="file" accept=".apk" required>
+                                        <p class="form-help">如 automation-app-debug.apk，上传后会自动读取包名、版本号等信息。</p>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="testApkFile">测试 APK</label>
+                                        <input class="form-control" id="testApkFile" name="test_file" type="file" accept=".apk" required>
+                                        <p class="form-help">如 automation-app-debug-androidTest.apk，用于 instrumentation。</p>
+                                    </div>
+                                    <div class="form-actions">
+                                        <button type="submit" class="btn btn--primary">上传并覆盖</button>
+                                    </div>
+                                    <div class="apk-message" id="apkMessage"></div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="tab-content active" id="devicesContent">
+                    <div class="tab-panel">
+                        <div class="table-card">
+                            <div class="table-toolbar">
+                                <div>
+                                    <h2 class="section-title">设备管理</h2>
+                                    <p class="section-subtitle">创建或移除设备账号，查看在线状态与网络信息</p>
+                                </div>
+                                <button class="btn btn--primary" id="createDeviceBtn">添加设备</button>
+                            </div>
+                            <div class="table-responsive" id="devicesTableBody">
+                                <div class="loading">加载中...</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="tab-content" id="adminsContent">
+                    <div class="tab-panel">
+                        <div class="table-card">
+                            <div class="table-toolbar">
+                                <div>
+                                    <h2 class="section-title">管理员列表</h2>
+                                    <p class="section-subtitle">超级管理员可在此维护后台账号与权限</p>
+                                </div>
+                                <button class="btn btn--primary hidden" id="createAdminBtn">添加管理员</button>
+                            </div>
+                            <div class="table-responsive" id="adminsListBody">
+                                <div class="loading">加载中...</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </section>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/admin.js') }}?v={{ request.app.state.static_version }}" defer></script>
+{% endblock %}

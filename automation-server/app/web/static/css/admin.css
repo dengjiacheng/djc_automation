@@ -1,0 +1,197 @@
+/* 管理后台专用样式 */
+.admin-shell .stats-card {
+    padding: 28px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.stat-card {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(99, 102, 241, 0.08));
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    box-shadow: var(--shadow-xs);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.stat-card h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.stat-card .value {
+    font-size: 2.25rem;
+    font-weight: 700;
+    color: var(--color-primary-dark);
+    line-height: 1.2;
+}
+
+.stat-card p {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+}
+
+.stat-card.is-success {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.18), rgba(34, 197, 94, 0.12));
+    border-color: rgba(34, 197, 94, 0.2);
+}
+
+.stat-card.is-warning {
+    background: linear-gradient(135deg, rgba(250, 204, 21, 0.2), rgba(250, 204, 21, 0.1));
+    border-color: rgba(250, 204, 21, 0.24);
+}
+
+.apk-board {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 24px;
+}
+
+.apk-card {
+    min-height: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    border: 1px solid rgba(99, 102, 241, 0.12);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.05), transparent 55%) var(--color-surface);
+    box-shadow: var(--shadow-xs);
+    padding: 24px;
+}
+
+.apk-card .form-group {
+    gap: 10px;
+}
+
+.apk-message {
+    margin-top: 8px;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+}
+
+.apk-message.success {
+    color: var(--color-primary-dark);
+}
+
+.apk-message.error {
+    color: var(--color-danger);
+}
+
+.table-card {
+    padding: 0;
+    background: transparent;
+    border-radius: var(--radius-lg);
+    box-shadow: none;
+    border: none;
+}
+
+.table-card .table-toolbar {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+.table-responsive table {
+    min-width: 840px;
+}
+
+.plain-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--color-surface);
+}
+
+.plain-table thead {
+    background: rgba(99, 102, 241, 0.08);
+}
+
+.plain-table th,
+.plain-table td {
+    text-align: left;
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.26);
+    font-size: 0.9375rem;
+}
+
+.plain-table tbody tr:hover {
+    background: rgba(99, 102, 241, 0.06);
+}
+
+.text-right {
+    text-align: right;
+}
+
+.admin-shell .tabs {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px;
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-xs);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    margin-bottom: 24px;
+}
+
+.admin-shell .tab {
+    font-size: 0.95rem;
+    padding: 10px 20px;
+}
+
+.admin-shell .tab.active {
+    color: var(--color-primary-dark);
+    background: rgba(99, 102, 241, 0.12);
+    border-radius: 999px;
+    box-shadow: none;
+}
+
+.admin-shell .tab-content {
+    width: 100%;
+}
+
+.admin-shell .tab-panel {
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid rgba(99, 102, 241, 0.12);
+    padding: 28px;
+}
+
+.admin-shell .tab-panel.stack-lg {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.admin-shell .tab-panel .loading,
+.admin-shell .tab-panel .empty-state {
+    padding: 48px 16px;
+}
+
+.admin-shell .tab-panel .table-card {
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.02), transparent 60%) var(--color-surface);
+    border: 1px solid rgba(99, 102, 241, 0.12);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xs);
+}
+
+@media (max-width: 768px) {
+    .stat-card .value {
+        font-size: 1.75rem;
+    }
+
+    .table-responsive table {
+        min-width: 720px;
+    }
+}

@@ -1,0 +1,52 @@
+# 脚本元数据
+metadata:
+  name: dhgate_order_v2
+  version: 3.0.4
+  description: DHgate下单自动化脚本
+  author: V6 Platform
+
+# 入口配置
+entry:
+  module: null            # 无特定入口模块（使用引擎驱动）
+  function: null          # 无入口函数
+  init_scene: start_app   # 引擎初始场景ID
+
+# 运行参数
+parameters:
+  required:
+    - name: search_keyword
+      type: string
+      description: 搜索关键词
+      default: Womans Designer Down Jacket Autumn and Winter Women Puffer Jackets Coat Embroidery Lapel Hooded Zipper Casual Short Small Parka Giacca Windbreaker
+    - name: target_product_title
+      type: string
+      description: 目标产品标题
+      default: Womans Designer Down Jacket Autumn and Winter Women Puffer Jackets Coat Embroidery Lapel Hooded Zipper Casual Short Small Parka Giacca00
+    - name: product_image
+      type: file
+      description: 商品图片(用于匹配)
+    - name: target_shop
+      type: string
+      description: 目标店铺名称
+      default: majorsuit968
+    - name: target_cart_count
+      type: string
+      description: 加购数量
+      default: 2
+    - name: image_load_wait
+      type: number
+      description: 图片加载等待时间(秒)
+      default: 30
+    - name: random_browse_probability
+      type: number
+      description: 随机浏览其他商品的概率(0-1之间)
+      default: 0.25
+    - name: max_random_browse_count
+      type: number
+      description: 最大随机浏览次数
+      default: 3
+  optional:
+    - name: max_test
+      type: number
+      description: ce
+      default: 1

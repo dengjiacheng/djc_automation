@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Keyboard xmlns:android="http://schemas.android.com/apk/res/android"
+    android:keyWidth="25%p"
+    android:horizontalGap="4dp"
+    android:verticalGap="4dp"
+    android:keyHeight="42dp">
+
+    <Row>
+        <Key
+            android:codes="-7"
+            android:keyLabel="Random"
+            android:keyWidth="25%p"
+            android:keyEdgeFlags="left" />
+        <Key
+            android:codes="-10"
+            android:keyLabel="Clear"
+            android:keyWidth="25%p"
+            android:isRepeatable="true" />
+        <Key
+            android:codes="-8"
+            android:keyLabel="Enter"
+            android:keyWidth="25%p" />
+        <Key
+            android:codes="-5"
+            android:keyLabel="IME"
+            android:keyWidth="25%p"
+            android:keyEdgeFlags="right" />
+    </Row>
+
+</Keyboard>

@@ -1,0 +1,50 @@
+{% extends "base.html" %} {% block title %}管理员登录 - Android自动化控制系统{%
+endblock %} {% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/login.css') }}?v={{ request.app.state.static_version }}" />
+{% endblock %} {% block body %}
+<div class="app-shell auth-shell">
+  <main class="auth-main">
+    <div class="auth-card">
+      <header class="auth-logo">
+        <span class="auth-badge">Android Automation</span>
+        <h1>控制系统登录</h1>
+      </header>
+      <form id="loginForm" class="auth-form stack">
+        <div class="form-group">
+          <label for="username">用户名</label>
+          <input
+            class="form-control"
+            type="text"
+            id="username"
+            name="username"
+            placeholder="请输入用户名"
+            required
+            autocomplete="username"
+          />
+        </div>
+        <div class="form-group">
+          <label for="password">密码</label>
+          <input
+            class="form-control"
+            type="password"
+            id="password"
+            name="password"
+            placeholder="请输入密码"
+            required
+            autocomplete="current-password"
+          />
+          <div class="form-error" id="errorMessage"></div>
+        </div>
+        <button type="submit" class="btn btn--primary w-full" id="loginBtn">
+          登录
+        </button>
+      </form>
+      <footer class="auth-footer">
+        <span>© 2025 Android Automation System</span>
+      </footer>
+    </div>
+  </main>
+</div>
+{% endblock %} {% block scripts %}
+<script src="{{ url_for('static', path='js/login.js') }}?v={{ request.app.state.static_version }}" defer></script>
+{% endblock %}

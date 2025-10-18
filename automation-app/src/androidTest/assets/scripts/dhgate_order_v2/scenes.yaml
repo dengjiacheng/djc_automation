@@ -1,0 +1,328 @@
+scenes:
+  #==========================弹窗==============================
+  - id: upgrade_dialog
+    description: "升级弹窗 - 点击取消"
+    signature:
+      required_all:
+        - { resourceId: "com.dhgate.buyermob:id/btn_cancel", text: "Cancel" }
+        - { resourceId: "com.dhgate.buyermob:id/btn_ok", text: "Upgrade" }
+    handler: handle_upgrade_dialog
+
+  - id: coupon_dialog
+    description: "优惠券弹窗 - 点击关闭"
+    signature:
+      required_all:
+        - { text: "Exclusive Coupons for you!" }
+        - { resourceId: "com.dhgate.buyermob:id/close" }
+    handler: handle_coupon_dialog
+    del_scenes: []
+
+  - id: congrats_dialog
+    description: "中奖弹窗 - 点击关闭"
+    signature:
+      required_all:
+        - { text: "Congrats! You Win" }
+        - { resourceId: "com.dhgate.buyermob:id/close" }
+      required_any:
+      forbidden_any:
+      forbidden_all:
+    handler: handle_congrats_dialog
+    del_scenes: []
+
+  - id: category_dialog
+    description: "个性化分类弹窗 - 点击关闭"
+    signature:
+      required_all:
+        - {
+            resourceId: "com.dhgate.buyermob:id/tv_content",
+            text: "Pick your personalized category?",
+          }
+        - { resourceId: "com.dhgate.buyermob:id/btn_ok", text: "OK" }
+        - { resourceId: "com.dhgate.buyermob:id/btn_close" }
+      required_any:
+      forbidden_any:
+      forbidden_all:
+    handler: handle_category_dialog
+    del_scenes: []
+
+  - id: rate_app_dialog
+    description: "评价应用弹窗 - 点击No Thanks"
+    signature:
+      required_all:
+        - { resourceId: "com.dhgate.buyermob:id/btn_cancel", text: "Rate App" }
+        - { resourceId: "com.dhgate.buyermob:id/btn_ok", text: "No,Thanks" }
+      required_any:
+      forbidden_any:
+      forbidden_all:
+    handler: handle_rate_app_dialog
+    del_scenes: []
+
+  - id: deal_dialog
+    description: "促销弹窗 - 点击关闭"
+    signature:
+      required_all:
+        - {
+            resourceId: "com.dhgate.buyermob:id/auto_title",
+            text: "Don't Miss The Deal",
+          }
+        - { resourceId: "com.dhgate.buyermob:id/auto_close" }
+      required_any:
+      forbidden_any:
+      forbidden_all:
+    handler: handle_deal_dialog
+    del_scenes: []
+  #============================================================
+
+  - id: product_not_found_page
+    description: "产品未找到错误页 - 点击返回"
+    signature:
+      required_all:
+        - { text: "Product not found" }
+        - { resourceId: "com.dhgate.buyermob:id/bar_search" }
+      required_any:
+      forbidden_any:
+      forbidden_all:
+    handler: handle_product_not_found_page
+    del_scenes: []
+
+  - id: start_app
+    description: "启动DHgate应用"
+    handler: handle_start_app
+    del_scenes: [start_app]
+
+  - id: home_page_enter_search
+    description: "首页 - 点击搜索框进入搜索页"
+    signature:
+      required_all:
+        - { resourceId: "com.dhgate.buyermob:id/tv_tab_title", text: "Account" }
+        - { resourceId: "com.dhgate.buyermob:id/bar_search_view" }
+      required_any:
+      forbidden_any:
+        - { resourceId: "com.dhgate.buyermob:id/btn_ok", text: "Upgrade" }
+        - {
+            resourceId: "com.dhgate.buyermob:id/auto_title",
+            text: "Don't Miss The Deal",
+          }
+      forbidden_all:
+    handler: handle_home_page_enter_search
+    del_scenes: []
+
+  - id: search_page
+    description: "搜索页面 - 输入关键词并搜索"
+    signature:
+      required_all:
+        - { resourceId: "com.dhgate.buyermob:id/btn_search_cancel" }
+        - { resourceId: "com.dhgate.buyermob:id/autoTV_search_auto_text" }
+        - { resourceId: "com.dhgate.buyermob:id/iv_search" }
+      required_any:
+      forbidden_any:
+      forbidden_all:
+    handler: handle_search_page
+    del_scenes: []
+
+  - id: search_result_page
+    description: "搜索结果页 - 显示产品列表"
+    signature:
+      required_all:
+        - { resourceId: "com.dhgate.buyermob:id/iv_change_view" }
+        - { resourceId: "com.dhgate.buyermob:id/iv_arrow" }
+      required_any:
+      forbidden_any:
+      forbidden_all:
+    handler: handle_search_result_page
+    del_scenes: [home_page_enter_search, search_page]
+
+  - id: product_detail_page
+    description: "商品详情页"
+    signature:
+      required_all:
+        - { resourceId: "com.dhgate.buyermob:id/bar_pd_back" }
+        - { resourceId: "com.dhgate.buyermob:id/rv_item_activity" }
+        - {
+            resourceId: "com.dhgate.buyermob:id/btn_addtocart",
+            text: "Add to Cart",
+          }
+      required_any:
+        - { resourceId: "com.dhgate.buyermob:id/bar_pd_search" }
+        - { resourceId: "com.dhgate.buyermob:id/tv_search_text" }
+      forbidden_any:
+        - { text: "Recommend", selected: True }
+      forbidden_all:
+    handler: handle_product_detail_page
+    del_scenes: []
+
+  - id: product_detail_page_a
+    description: "商品详情页a"
+    signature:
+      required_all:
+        - { resourceId: "com.dhgate.buyermob:id/bar_pd_back" }
+        - { resourceId: "com.dhgate.buyermob:id/rv_item_activity" }
+        - { resourceId: "com.dhgate.buyermob:id/btn_buy", text: "Buy Now" }
+      required_any:
+        - { resourceId: "com.dhgate.buyermob:id/bar_pd_search" }
+        - { resourceId: "com.dhgate.buyermob:id/tv_search_text" }
+      forbidden_any:
+        - { text: "Recommend", selected: True }
+        - {
+            resourceId: "com.dhgate.buyermob:id/btn_addtocart",
+            text: "Add to Cart",
+          }
+      forbidden_all:
+    handler: handle_product_detail_page_a
+    del_scenes: []
+
+  - id: product_recommend_page
+    description: "产品推荐页 - 继续加购或进入购物车"
+    signature:
+      required_all:
+        - { resourceId: "com.dhgate.buyermob:id/bar_pd_back" }
+        - { text: "Recommend", selected: True }
+        - {
+            resourceId: "com.dhgate.buyermob:id/btn_addtocart",
+            text: "Add to Cart",
+          }
+      required_any:
+        - { resourceId: "com.dhgate.buyermob:id/bar_pd_search" }
+        - { resourceId: "com.dhgate.buyermob:id/tv_search_text" }
+      forbidden_any:
+      forbidden_all:
+    handler: handle_product_recommend_page
+    del_scenes: [search_result_page]
+
+  - id: sku_selection_page
+    description: "SKU选择页面 - 选择规格和数量"
+    signature:
+      required_all:
+        - { resourceId: "com.dhgate.buyermob:id/sku_root" }
+        - { resourceId: "com.dhgate.buyermob:id/sku_list" }
+        - { resourceId: "com.dhgate.buyermob:id/sku_attr_list" }
+      required_any:
+        - { resourceId: "com.dhgate.buyermob:id/btn_paynow" }
+      forbidden_any:
+      forbidden_all:
+    handler: handle_sku_selection_page
+    del_scenes: []
+
+  - id: sku_selection_page_a
+    description: "SKU选择页面a - 选择规格和数量"
+    signature:
+      required_all:
+        - { resourceId: "com.dhgate.buyermob:id/sku_root" }
+        - { resourceId: "com.dhgate.buyermob:id/sku_list" }
+        - { resourceId: "com.dhgate.buyermob:id/sku_attr_list" }
+        - { resourceId: "com.dhgate.buyermob:id/two_buy_buy", text: "Buy Now" }
+      required_any:
+      forbidden_any:
+      forbidden_all:
+    handler: handle_sku_selection_page_a
+    del_scenes: []
+
+  - id: cart_checkout_page
+    description: "购物车结算页 - 点击结算"
+    signature:
+      required_all:
+        - { resourceId: "com.dhgate.buyermob:id/btn_cart_checkout" }
+        - { resourceId: "com.dhgate.buyermob:id/tv_cart_title" }
+        - { resourceId: "com.dhgate.buyermob:id/tv_cart_list_total" }
+      required_any:
+      forbidden_any:
+      forbidden_all:
+    handler: handle_cart_checkout_page
+    del_scenes: []
+
+  - id: order_confirm_page
+    description: "订单确认页 - 点击确认下单"
+    signature:
+      required_all:
+        - { text: "Place Order" }
+        - { resourceId: "com.dhgate.buyermob:id/btn_confirm" }
+        - { resourceId: "com.dhgate.buyermob:id/tv_total_price_new" }
+      required_any:
+      forbidden_any:
+      forbidden_all:
+    handler: handle_order_confirm_page
+    del_scenes: []
+
+  - id: secure_payment_page
+    description: "安全支付页 - 点击添加新卡"
+    signature:
+      required_all:
+        - { text: "Secure Payment" }
+        - { resourceId: "com.dhgate.buyermob:id/cons_new_card_root" }
+        - { text: "Add a new card" }
+      required_any:
+      forbidden_any:
+        - {
+            resourceId: "com.dhgate.buyermob:id/tv_pay_tips_title",
+            text: "Oops! Your order payment failed.",
+          }
+      forbidden_all:
+    handler: handle_secure_payment_page
+    del_scenes: []
+
+  - id: payment_exception_page
+    description: "支付异常页 - 点击刷新"
+    signature:
+      required_all:
+        - {
+            resourceId: "com.dhgate.buyermob:id/tv_pay_title",
+            text: "Secure Payment",
+          }
+        - {
+            resourceId: "com.dhgate.buyermob:id/tv_risk_content",
+            text: "Information Exception",
+          }
+        - { resourceId: "com.dhgate.buyermob:id/tv_refresh", text: "Refresh" }
+      required_any:
+      forbidden_any:
+      forbidden_all:
+    handler: handle_payment_exception_page
+    del_scenes: []
+
+  - id: card_info_page
+    description: "填写卡信息页"
+    signature:
+      required_all:
+        - { text: "Add a new card" }
+        - { resourceId: "com.dhgate.buyermob:id/sl_card_num" }
+        - { text: "Pay Now" }
+      required_any:
+      forbidden_any:
+      forbidden_all:
+    handler: handle_card_info_page
+    del_scenes: []
+
+  - id: payment_failed_page
+    description: "支付失败页 - 结束任务"
+    signature:
+      required_all:
+        - { text: "Secure Payment" }
+        - {
+            resourceId: "com.dhgate.buyermob:id/tv_pay_tips_title",
+            text: "Oops! Your order payment failed.",
+          }
+      required_any:
+      forbidden_any:
+      forbidden_all:
+    handler: handle_payment_failed_page
+    del_scenes: []
+
+  - id: no_payment_method_dialog
+    description: "无支付方式弹窗 - 点击关闭"
+    signature:
+      required_all:
+        - {
+            resourceId: "com.dhgate.buyermob:id/tv_view_more",
+            text: "View More",
+          }
+        - {
+            resourceId: "com.dhgate.buyermob:id/tv_pay_title",
+            text: "Secure Payment",
+          }
+        - { resourceId: "com.dhgate.buyermob:id/iv_close" }
+      required_any:
+      forbidden_any:
+        - { text: "Add a new card" }
+      forbidden_all:
+    handler: handle_no_payment_method_dialog
+    del_scenes: []
