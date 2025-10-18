@@ -151,6 +151,22 @@ class Wallet(Base):
     transactions = relationship("WalletTransaction", back_populates="wallet", cascade="all, delete-orphan")
 
 
+class WalletTopupOrder(Base):
+    __tablename__ = "wallet_topup_orders"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    account_id = Column(String(36), ForeignKey("accounts.id"), nullable=False, index=True)
+    amount_cents = Column(Integer, nullable=False)
+    currency = Column(String(10), nullable=False, default="CNY")
+    status = Column(String(20), nullable=False, default="pending")  # pending, success, failed
+    payment_channel = Column(String(50))
+    reference_no = Column(String(100))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    confirmed_at = Column(DateTime(timezone=True))
+
+    account = relationship("Account")
+
+
 class WalletTransaction(Base):
     __tablename__ = "wallet_transactions"
 

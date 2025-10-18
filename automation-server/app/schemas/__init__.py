@@ -315,3 +315,39 @@ class ScriptJobListResponse(BaseModel):
 class ScriptJobCreateRequest(BaseModel):
     template_id: str = Field(..., description="模板ID")
     device_ids: list[str] = Field(..., description="目标设备ID列表", min_length=1)
+
+
+class WalletSnapshotResponse(BaseModel):
+    balance_cents: int
+    currency: str
+
+
+class WalletTransactionResponse(BaseModel):
+    id: str
+    amount_cents: int
+    currency: str
+    type: str
+    description: Optional[str] = None
+    created_at: datetime
+    job_id: Optional[str] = None
+
+
+class WalletTransactionListResponse(BaseModel):
+    transactions: list[WalletTransactionResponse] = Field(default_factory=list)
+
+
+class WalletTopupRequest(BaseModel):
+    amount_cents: int = Field(..., gt=0)
+    payment_channel: Optional[str] = None
+    reference_no: Optional[str] = None
+
+
+class WalletTopupResponse(BaseModel):
+    id: str
+    amount_cents: int
+    currency: str
+    status: str
+    payment_channel: Optional[str] = None
+    reference_no: Optional[str] = None
+    created_at: datetime
+    confirmed_at: Optional[datetime] = None

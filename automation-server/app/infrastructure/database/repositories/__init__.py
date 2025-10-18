@@ -7,6 +7,7 @@ from .log_repository import SqlLogRepository
 from .template_repository import SqlScriptTemplateRepository
 from .script_job_repository import SqlScriptJobRepository
 from .wallet_repository import SqlWalletRepository
+from .topup_repository import SqlTopupRepository
 
 __all__ = [
     "SqlAccountRepository",
@@ -16,4 +17,5 @@ __all__ = [
     "SqlScriptTemplateRepository",
     "SqlScriptJobRepository",
     "SqlWalletRepository",
+    "SqlTopupRepository",
 ]

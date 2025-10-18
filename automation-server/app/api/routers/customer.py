@@ -18,6 +18,7 @@ from app.domain.templates import ScriptTemplateService
 from app.domain.script_jobs import ScriptJobService
 from app.domain.script_jobs.models import ScriptJob, ScriptJobTarget
 from app.domain.wallets import WalletService
+from app.domain.topups import TopupService
 from app.domain.commands import CommandService
 from app.schemas import (
     AccountResponse,
@@ -31,6 +32,11 @@ from app.schemas import (
     ScriptJobResponse,
     ScriptJobTargetResponse,
     ScriptJobCreateRequest,
+    WalletSnapshotResponse,
+    WalletTransactionListResponse,
+    WalletTransactionResponse,
+    WalletTopupRequest,
+    WalletTopupResponse,
     ScriptParameterSpec,
     ScriptTemplateCreate,
     ScriptTemplateDetail,
@@ -267,6 +273,7 @@ async def create_script_job(
     template_service = ScriptTemplateService.with_session(db)
     job_service = ScriptJobService.with_session(db)
     wallet_service = WalletService.with_session(db)
+    topup_service = TopupService.with_session(db)
     command_service = CommandService.with_session(db)
 
     template = await template_service.get_template(payload.template_id)
@@ -310,6 +317,7 @@ async def create_script_job(
         db=db,
         job_service=job_service,
         wallet_service=wallet_service,
+        topup_service=topup_service,
         command_service=command_service,
     )
     await db.commit()
@@ -365,6 +373,7 @@ async def retry_script_job(
     job_service = ScriptJobService.with_session(db)
     template_service = ScriptTemplateService.with_session(db)
     wallet_service = WalletService.with_session(db)
+    topup_service = TopupService.with_session(db)
     command_service = CommandService.with_session(db)
     job = await job_service.get_job(job_id)
     if job is None or job.owner_id != account.id:
@@ -403,6 +412,7 @@ async def retry_script_job(
         db=db,
         job_service=job_service,
         wallet_service=wallet_service,
+        topup_service=topup_service,
         command_service=command_service,
     )
     await db.commit()
@@ -642,6 +652,7 @@ async def _start_job_execution(
     db: AsyncSession,
     job_service: ScriptJobService,
     wallet_service: WalletService,
+    topup_service: TopupService,
     command_service: CommandService,
 ) -> ScriptJobResponse:
     pricing = capability.get("pricing") or {}
