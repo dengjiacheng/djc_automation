@@ -22,6 +22,7 @@ const adminElements = {
   createAdminBtn: document.getElementById("createAdminBtn"),
   logoutBtn: document.getElementById("logoutBtn"),
   controlBtn: document.getElementById("controlBtn"),
+  scriptLabBtn: document.getElementById("scriptLabBtn"),
 };
 
 // 初始化入口
@@ -71,6 +72,11 @@ function bindAdminEvents() {
   adminElements.controlBtn.addEventListener("click", () => {
     window.location.href = "/control";
   });
+  if (adminElements.scriptLabBtn) {
+    adminElements.scriptLabBtn.addEventListener("click", () => {
+      window.location.href = "/script-lab";
+    });
+  }
 
   if (adminElements.refreshApkBtn) {
     adminElements.refreshApkBtn.addEventListener("click", () => loadApkInfo());

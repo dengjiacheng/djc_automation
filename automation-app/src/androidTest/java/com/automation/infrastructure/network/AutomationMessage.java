@@ -53,7 +53,8 @@ public final class AutomationMessage {
                                                   String result,
                                                   String errorMessage,
                                                   String userId,
-                                                  String deviceId) throws JSONException {
+                                                  String deviceId,
+                                                  String action) throws JSONException {
         JSONObject payload = new JSONObject();
         payload.put("command_id", commandId);
         payload.put("status", success ? "success" : "failed");
@@ -69,11 +70,14 @@ public final class AutomationMessage {
         if (deviceId != null) {
             payload.put("device_id", deviceId);
         }
+        if (action != null) {
+            payload.put("action", action);
+        }
         return new AutomationMessage("result", payload);
     }
 
-    public static AutomationMessage deviceHello(JSONObject data) {
-        return new AutomationMessage("device_info", data);
+    public static AutomationMessage sessionInit(JSONObject data) {
+        return new AutomationMessage("session_init", data);
     }
 
     public static AutomationMessage log(String level, String message) throws JSONException {

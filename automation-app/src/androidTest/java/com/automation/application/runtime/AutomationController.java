@@ -161,12 +161,12 @@ public final class AutomationController implements AutomationWebSocketClient.Mes
         Log.i(TAG, "执行指令: " + action + " (id=" + safeCommandId + ")");
 
         if ("stop_task".equals(action)) {
-            handleStopRequest(safeCommandId, userId);
+            handleStopRequest(safeCommandId, userId, action);
             return;
         }
 
         if (!running.get()) {
-            sendCommandResult(safeCommandId, false, null, "controller not running", userId);
+            sendCommandResult(safeCommandId, false, null, "controller not running", userId, action);
             return;
         }
 
@@ -174,14 +174,14 @@ public final class AutomationController implements AutomationWebSocketClient.Mes
             RunningCommand active = currentCommand.get();
             if (active != null && !active.isCompleted()) {
                 Log.w(TAG, "设备忙，拒绝新指令: " + action);
-                sendCommandResult(safeCommandId, false, null, "device busy", userId);
+                sendCommandResult(safeCommandId, false, null, "device busy", userId, action);
                 return;
             }
 
             String guardToken = safeCommandId;
             if (!scriptRunGuard.tryAcquire(guardToken)) {
                 Log.w(TAG, "脚本互斥锁占用，拒绝新指令");
-                sendCommandResult(safeCommandId, false, null, "device busy", userId);
+                sendCommandResult(safeCommandId, false, null, "device busy", userId, action);
                 return;
             }
 
@@ -193,7 +193,7 @@ public final class AutomationController implements AutomationWebSocketClient.Mes
             } catch (RejectedExecutionException rex) {
                 Log.e(TAG, "指令提交失败: " + action, rex);
                 scriptRunGuard.release(guardToken);
-                sendCommandResult(safeCommandId, false, null, "executor rejected command", userId);
+                sendCommandResult(safeCommandId, false, null, "executor rejected command", userId, action);
             }
         }
     }
@@ -212,7 +212,7 @@ public final class AutomationController implements AutomationWebSocketClient.Mes
             JSONObject progressExtra = toJsonObject(payload);
 
             if (success) {
-                sendCommandResult(session.commandId, true, rendered, null, session.userId);
+                sendCommandResult(session.commandId, true, rendered, null, session.userId, session.action);
                 Log.i(TAG, "✓ 指令执行成功: " + session.action);
                 Log.d(TAG, "Command payload result=" + rendered);
                 String finishMessage = result != null && result.message() != null
@@ -224,13 +224,13 @@ public final class AutomationController implements AutomationWebSocketClient.Mes
                 Log.w(TAG, "✗ 指令执行失败: " + session.action + " - " + errorMessage);
                 Log.d(TAG, "Command failure payload=" + rendered);
                 session.reportProgress("error", errorMessage, null, progressExtra);
-                sendCommandResult(session.commandId, false, rendered, errorMessage, session.userId);
+                sendCommandResult(session.commandId, false, rendered, errorMessage, session.userId, session.action);
             }
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             Log.w(TAG, "指令被中断: " + session.action);
             session.reportProgress("error", "指令被中断", null, null);
-            sendCommandResult(session.commandId, false, null, "command interrupted", session.userId);
+            sendCommandResult(session.commandId, false, null, "command interrupted", session.userId, session.action);
         } catch (Exception e) {
             Log.e(TAG, "✗ 指令执行失败: " + session.action, e);
             JSONObject extra = new JSONObject();
@@ -241,7 +241,7 @@ public final class AutomationController implements AutomationWebSocketClient.Mes
                 // ignore json errors
             }
             session.reportProgress("error", "指令执行失败", null, extra);
-            sendCommandResult(session.commandId, false, null, e.getMessage(), session.userId);
+            sendCommandResult(session.commandId, false, null, e.getMessage(), session.userId, session.action);
         } finally {
             scriptRunGuard.release(session.guardToken);
             clearCurrentCommand(session);
@@ -259,21 +259,21 @@ public final class AutomationController implements AutomationWebSocketClient.Mes
         return null;
     }
 
-    private void handleStopRequest(String commandId, String userId) {
+    private void handleStopRequest(String commandId, String userId, String action) {
         RunningCommand active = currentCommand.get();
         if (active == null || active.isCompleted()) {
             Log.w(TAG, "停止请求但当前无执行中的任务");
-            sendCommandResult(commandId, false, null, "no running task", userId);
+            sendCommandResult(commandId, false, null, "no running task", userId, action);
             return;
         }
 
         boolean cancelled = active.cancel();
         if (cancelled) {
             Log.i(TAG, "已发送中断信号给任务: " + active.action);
-            sendCommandResult(commandId, true, "cancel requested", null, userId);
+            sendCommandResult(commandId, true, "cancel requested", null, userId, action);
         } else {
             Log.w(TAG, "取消任务失败，可能已完成");
-            sendCommandResult(commandId, false, null, "unable to cancel", userId);
+            sendCommandResult(commandId, false, null, "unable to cancel", userId, action);
         }
     }
 
@@ -290,9 +290,10 @@ public final class AutomationController implements AutomationWebSocketClient.Mes
             boolean success,
             String result,
             String error,
-            String userId) {
+            String userId,
+            String action) {
         String deviceId = getDeviceId();
-        webSocketClient.sendCommandResult(commandId, success, result, error, userId, deviceId);
+        webSocketClient.sendCommandResult(commandId, success, result, error, userId, deviceId, action);
     }
 
     private String getDeviceId() {

@@ -14,6 +14,8 @@ import org.json.JSONObject;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -48,6 +50,12 @@ public final class AutomationWebSocketClient {
     private String deviceId;
     private final Deque<AutomationMessage> pendingMessages = new ArrayDeque<>();
     private static final int MAX_PENDING_MESSAGES = 200;
+    private final Map<String, AutomationMessage> pendingAcks = new LinkedHashMap<>();
+    private volatile boolean handshakeCompleted = false;
+    private static final String TYPE_SESSION_INIT = "session_init";
+    private static final String TYPE_SESSION_READY = "session_ready";
+    private static final String TYPE_COMMAND_ACK = "command_ack";
+    private static final String TYPE_COMMAND = "command";
 
     public AutomationWebSocketClient(Context context) {
         this.context = context.getApplicationContext();
@@ -94,8 +102,8 @@ public final class AutomationWebSocketClient {
                 connected = true;
                 reconnectScheduled = false;
                 Log.i(TAG, "WebSocket 连接成功");
-                sendDeviceInfo();
-                flushPendingMessages();
+                handshakeCompleted = false;
+                sendSessionInit();
                 startHeartbeat();
                 if (connectionCallback != null) {
                     connectionCallback.onConnected();
@@ -111,6 +119,7 @@ public final class AutomationWebSocketClient {
             public void onClosed(WebSocket webSocket, int code, String reason) {
                 Log.i(TAG, "WebSocket 已关闭: " + code + " - " + reason);
                 connected = false;
+                handshakeCompleted = false;
                 stopHeartbeat();
                 if (connectionCallback != null) {
                     connectionCallback.onDisconnected();
@@ -124,6 +133,7 @@ public final class AutomationWebSocketClient {
             public void onFailure(WebSocket webSocket, Throwable t, Response response) {
                 Log.e(TAG, "WebSocket 连接失败", t);
                 connected = false;
+                handshakeCompleted = false;
                 stopHeartbeat();
                 if (connectionCallback != null) {
                     connectionCallback.onError(t.getMessage());
@@ -153,9 +163,12 @@ public final class AutomationWebSocketClient {
             return;
         }
 
+        String type = message.getType();
+        boolean isSessionInit = TYPE_SESSION_INIT.equals(type);
+
         boolean shouldQueue;
         synchronized (pendingMessages) {
-            shouldQueue = !connected || webSocket == null;
+            shouldQueue = !connected || webSocket == null || (!handshakeCompleted && !isSessionInit);
             if (shouldQueue) {
                 enqueuePendingLocked(message);
             }
@@ -178,9 +191,17 @@ public final class AutomationWebSocketClient {
                                   String result,
                                   String errorMessage,
                                   String userId,
-                                  String deviceId) {
+                                  String deviceId,
+                                  String action) {
         try {
-            sendMessage(AutomationMessage.commandResult(commandId, success, result, errorMessage, userId, deviceId));
+            AutomationMessage message =
+                    AutomationMessage.commandResult(commandId, success, result, errorMessage, userId, deviceId, action);
+            if (commandId != null) {
+                synchronized (pendingAcks) {
+                    pendingAcks.put(commandId, message);
+                }
+            }
+            sendMessage(message);
         } catch (JSONException e) {
             Log.e(TAG, "发送指令执行结果失败", e);
         }
@@ -241,9 +262,10 @@ public final class AutomationWebSocketClient {
             if (messageCallback != null) {
                 messageCallback.onMessage(message);
             }
-            if ("welcome".equals(message.getType())) {
-                handleWelcome(message.getData());
-            } else if ("command".equals(message.getType()) && message.getData() != null) {
+            if (TYPE_SESSION_READY.equals(message.getType())) {
+                handleSessionReady(message.getData());
+                onHandshakeCompleted();
+            } else if (TYPE_COMMAND.equals(message.getType()) && message.getData() != null) {
                 JSONObject data = message.getData();
                 String commandId = data.optString("command_id");
                 String action = data.optString("action");
@@ -252,6 +274,8 @@ public final class AutomationWebSocketClient {
                 if (messageCallback != null) {
                     messageCallback.onCommand(commandId, action, params, userId);
                 }
+            } else if (TYPE_COMMAND_ACK.equals(message.getType())) {
+                handleAck(message.getData());
             } else if ("ping".equals(message.getType())) {
                 sendMessage(new AutomationMessage("pong", null));
             }
@@ -260,7 +284,7 @@ public final class AutomationWebSocketClient {
         }
     }
 
-    private void handleWelcome(JSONObject data) throws JSONException {
+    private void handleSessionReady(JSONObject data) throws JSONException {
         if (data != null && authService != null && data.has("device_id")) {
             String newId = data.optString("device_id", null);
             if (newId != null) {
@@ -270,7 +294,24 @@ public final class AutomationWebSocketClient {
         }
     }
 
-    private void sendDeviceInfo() {
+    private void handleAck(JSONObject data) {
+        if (data == null) {
+            return;
+        }
+        String commandId = data.optString("command_id", null);
+        if (commandId == null) {
+            return;
+        }
+        synchronized (pendingAcks) {
+            if (pendingAcks.remove(commandId) != null) {
+                Log.d(TAG, "已收到指令 ACK, commandId=" + commandId);
+            } else {
+                Log.d(TAG, "收到未知 ACK, commandId=" + commandId);
+            }
+        }
+    }
+
+    private void sendSessionInit() {
         try {
             JSONObject data = new JSONObject();
             data.put("device_name", Build.MODEL);
@@ -295,10 +336,19 @@ public final class AutomationWebSocketClient {
                 }
             }
 
-            sendMessage(AutomationMessage.deviceHello(data));
+            sendMessage(AutomationMessage.sessionInit(data));
         } catch (JSONException e) {
-            Log.e(TAG, "构建设备信息消息失败", e);
+            Log.e(TAG, "构建 session 初始化消息失败", e);
         }
+    }
+
+    private void onHandshakeCompleted() {
+        if (handshakeCompleted) {
+            return;
+        }
+        handshakeCompleted = true;
+        flushPendingMessages();
+        replayPendingAcks();
     }
 
     private void startHeartbeat() {
@@ -382,7 +432,7 @@ public final class AutomationWebSocketClient {
         while (true) {
             AutomationMessage message;
             synchronized (pendingMessages) {
-                if (!connected || webSocket == null) {
+                if (!connected || webSocket == null || !handshakeCompleted) {
                     return;
                 }
                 message = pendingMessages.pollFirst();
@@ -399,6 +449,16 @@ public final class AutomationWebSocketClient {
                 enqueuePending(message);
                 return;
             }
+        }
+    }
+
+    private void replayPendingAcks() {
+        Map<String, AutomationMessage> snapshot;
+        synchronized (pendingAcks) {
+            snapshot = new LinkedHashMap<>(pendingAcks);
+        }
+        for (AutomationMessage message : snapshot.values()) {
+            sendMessage(message);
         }
     }
 }

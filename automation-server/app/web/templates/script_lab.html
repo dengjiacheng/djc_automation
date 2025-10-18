@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}脚本开发实验室 - Android自动化平台{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/script_lab.css') }}?v={{ request.app.state.static_version }}">
+{% endblock %}
+
+{% block body %}
+<div class="app-shell script-lab-shell">
+    <header class="topbar script-lab-topbar">
+        <div class="container-wide">
+            <div class="topbar-brand">
+                <span class="brand-dot"></span>
+                脚本开发实验室
+            </div>
+                <div class="topbar-actions">
+                    <div class="device-status" id="deviceStatusChip">
+                        未连接设备
+                    </div>
+                    <div class="toolbar-buttons">
+                        <button class="btn btn--ghost" id="toolbarRefreshDevices">刷新设备列表</button>
+                        <button class="btn btn--ghost" id="toolbarRefreshCapabilities">刷新能力</button>
+                        <button class="btn btn--ghost" id="toolbarRefreshUi">刷新界面</button>
+                        <button class="btn btn--primary" id="toolbarValidate">验证指纹</button>
+                    <button class="btn btn--outline" id="toolbarCopyYaml">复制指纹YAML</button>
+                    <button class="btn btn--outline" id="toolbarCopyHandler">复制Handler模版</button>
+                </div>
+                <button class="btn btn--danger" id="toolbarLogout">退出</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="app-main script-lab-main">
+        <div class="container-wide script-lab-layout">
+            <aside class="pane pane--left">
+                <section class="card selector-card">
+                    <h2 class="section-title">选择设备</h2>
+                    <div class="form-grid compact">
+                        <label class="form-label" for="labUserSelect">用户</label>
+                        <select class="form-control" id="labUserSelect">
+                            <option value="">-- 请选择用户 --</option>
+                        </select>
+                        <label class="form-label" for="labDeviceSelect">设备</label>
+                        <select class="form-control" id="labDeviceSelect">
+                            <option value="">-- 请先选择用户 --</option>
+                        </select>
+                    </div>
+                    <div class="device-meta">
+                        <div class="meta-row">
+                            <span class="meta-key">状态</span>
+                            <span class="meta-value" id="labDeviceOnline">-</span>
+                        </div>
+                        <div class="meta-row">
+                            <span class="meta-key">最近在线</span>
+                            <span class="meta-value" id="labDeviceLastOnline">-</span>
+                        </div>
+                        <div class="meta-row">
+                            <span class="meta-key">Android</span>
+                            <span class="meta-value" id="labDeviceAndroid">-</span>
+                        </div>
+                        <div class="meta-row">
+                            <span class="meta-key">型号</span>
+                            <span class="meta-value" id="labDeviceModel">-</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card capability-card">
+                    <div class="card-header">
+                        <h2 class="section-title">设备能力</h2>
+                        <button class="btn btn--ghost btn--xs" id="capabilityCollapseBtn">折叠全部</button>
+                    </div>
+                    <div class="capability-groups" id="capabilityGroups">
+                        <p class="empty">选择设备后自动加载能力列表。</p>
+                    </div>
+                </section>
+            </aside>
+
+            <section class="pane pane--center">
+                <div class="workspace">
+                    <section class="workspace-section screenshot-section">
+                        <div class="section-header">
+                            <h2>实时截图</h2>
+                            <div class="snapshot-meta" id="screenshotMeta">尚未加载</div>
+                        </div>
+                        <div class="screenshot-container">
+                            <img id="labScreenshot" alt="设备截图">
+                            <div id="labScreenshotHighlight" class="screenshot-highlight"></div>
+                        </div>
+                    </section>
+
+                    <section class="workspace-section fingerprint-status">
+                        <div class="status-chip" id="fingerprintStatusChip">指纹未验证</div>
+                        <div class="status-info" id="fingerprintStatusInfo"></div>
+                    </section>
+
+                    <section class="card fingerprint-card">
+                        <div class="card-header">
+                            <h2 class="section-title">场景指纹</h2>
+                            <span class="hint">除指纹外字段将自动填占位符</span>
+                        </div>
+                        <div class="fingerprint-meta">
+                            <div class="meta-field">
+                                <label for="sceneIdInput">Scene ID</label>
+                                <input id="sceneIdInput" class="form-control" type="text" placeholder="auto_scene_id">
+                            </div>
+                            <div class="meta-field">
+                                <label for="sceneHandlerInput">Handler</label>
+                                <input id="sceneHandlerInput" class="form-control" type="text" placeholder="handle_auto_generated_scene">
+                            </div>
+                            <div class="meta-field">
+                                <label for="sceneDescriptionInput">描述</label>
+                                <input id="sceneDescriptionInput" class="form-control" type="text" placeholder="TODO 填写场景描述">
+                            </div>
+                        </div>
+                        <div class="fingerprint-groups" id="fingerprintGroups">
+                            <!-- 动态注入 required_all/any/forbidden_any/forbidden_all -->
+                        </div>
+                        <div class="yaml-preview">
+                            <div class="yaml-header">
+                                <span>YAML 预览</span>
+                                <button class="btn btn--ghost btn--xs" id="resetFingerprintBtn">重置</button>
+                            </div>
+                            <textarea id="yamlPreview" readonly></textarea>
+                        </div>
+                    </section>
+
+                    <section class="card handler-card">
+                        <div class="card-header">
+                            <h2 class="section-title">操作序列 / Handler 测试</h2>
+                            <button class="btn btn--ghost btn--xs" id="clearHandlerPlanBtn">清空</button>
+                        </div>
+                        <div class="handler-plan" id="handlerPlanList">
+                            <p class="empty">从下方能力控制台添加步骤。</p>
+                        </div>
+                        <div class="handler-actions">
+                            <button class="btn btn--primary" id="runHandlerPlanBtn">顺序执行</button>
+                            <button class="btn btn--outline" id="runStartTaskBtn">触发 start_task</button>
+                        </div>
+                    </section>
+                </div>
+            </section>
+
+            <aside class="pane pane--right">
+                <section class="card dump-card">
+                    <div class="card-header">
+                        <div class="section-header dump-header">
+                            <h2>UI 层级</h2>
+                            <div class="dump-summary" id="dumpSummary">未获取 dump</div>
+                        </div>
+                        <div class="dump-header-extra">
+                            <input
+                                id="dumpSearchInput"
+                                class="form-control"
+                                type="text"
+                                placeholder="搜索 resource-id / text / content-desc..."
+                            >
+                        </div>
+                    </div>
+                    <div class="dump-split">
+                        <div class="dump-tree" id="dumpTreePane"></div>
+                        <div id="dumpAttributeTable" class="dump-attributes-content">
+                            <p class="empty">选择节点以查看属性</p>
+                        </div>
+                        <div class="attribute-actions" id="dumpActionContainer"></div>
+                    </div>
+                </section>
+            </aside>
+        </div>
+
+        <section class="command-console">
+            <div class="console-top">
+                <div class="console-tabs" id="consoleTabs">
+                    <!-- 动态 tab -->
+                </div>
+                <div class="console-controls">
+                    <label class="checkbox">
+                        <input type="checkbox" id="autoRefreshSnapshot" checked>
+                        <span>执行后自动刷新截图与Dump</span>
+                    </label>
+                </div>
+                <div class="command-status" id="commandStatus">暂无指令执行</div>
+            </div>
+            <div class="console-body">
+                <div class="console-form" id="consoleFormArea">
+                    <p class="empty">选择能力以填写参数。</p>
+                </div>
+                <div class="console-log">
+                    <h3>执行日志</h3>
+                    <div class="log-stream" id="consoleLog"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" defer></script>
+<script src="{{ url_for('static', path='js/script_lab.js') }}?v={{ request.app.state.static_version }}" defer></script>
+{% endblock %}

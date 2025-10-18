@@ -80,6 +80,10 @@ def create_app() -> FastAPI:
     async def control_page(request: Request):
         return templates.TemplateResponse("control.html", {"request": request})
 
+    @app.get("/script-lab", response_class=HTMLResponse)
+    async def script_lab_page(request: Request):
+        return templates.TemplateResponse("script_lab.html", {"request": request})
+
     return app
 
 

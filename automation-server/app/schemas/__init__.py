@@ -111,6 +111,7 @@ class CommandResultUpdate(BaseModel):
     error_message: Optional[str] = None
     user_id: Optional[str] = None
     device_id: Optional[str] = None
+    action: Optional[str] = None
 
 
 class WSMessage(BaseModel):
