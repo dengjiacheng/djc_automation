@@ -26,6 +26,7 @@
             <nav class="tabs" id="customerTabs">
                 <button class="tab active" data-tab="scripts">脚本中心</button>
                 <button class="tab" data-tab="templates">模板管理</button>
+                <button class="tab" data-tab="jobs">执行记录</button>
                 <button class="tab" data-tab="devices">我的设备</button>
             </nav>
 
@@ -56,6 +57,21 @@
                         <button class="btn btn--ghost" id="refreshTemplatesBtn">刷新</button>
                     </header>
                     <div class="table-responsive" id="templateTable">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </section>
+            </section>
+
+            <section class="tab-content" id="jobsContent">
+                <section class="card table-card">
+                    <header class="card-toolbar">
+                        <div>
+                            <h2 class="section-title">脚本执行记录</h2>
+                            <p class="section-subtitle">查看历史任务、成本与结果</p>
+                        </div>
+                        <button class="btn btn--ghost" id="refreshJobsBtn">刷新</button>
+                    </header>
+                    <div class="table-responsive" id="jobsTable">
                         <div class="loading">加载中...</div>
                     </div>
                 </section>
@@ -129,6 +145,41 @@
         </footer>
     </div>
 </div>
+
+<div class="modal" id="executeModal" aria-hidden="true">
+    <div class="modal-dialog modal-dialog--wide">
+        <header class="modal-header">
+            <h3 id="executeModalTitle">执行脚本</h3>
+            <button class="modal-close" type="button" data-close-modal>&times;</button>
+        </header>
+        <div class="modal-body execute-body">
+            <div class="execute-meta" id="executeMeta"></div>
+            <div class="execute-grid">
+                <section class="execute-section">
+                    <h4>选择设备</h4>
+                    <div class="device-list" id="executeDeviceList">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </section>
+                <section class="execute-section">
+                    <h4>费用概览</h4>
+                    <div class="cost-summary" id="executeCostSummary">
+                        <p class="muted">选择设备后自动计算费用。</p>
+                    </div>
+                    <h4>模板参数</h4>
+                    <pre class="config-preview" id="executeConfigPreview"></pre>
+                </section>
+            </div>
+        </div>
+        <footer class="modal-footer">
+            <span class="form-message" id="executeMessage"></span>
+            <button type="button" class="btn btn--ghost" data-close-modal>取消</button>
+            <button type="button" class="btn btn--primary" id="executeSubmitBtn">确认执行</button>
+        </footer>
+    </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
 {% endblock %}
 
 {% block scripts %}

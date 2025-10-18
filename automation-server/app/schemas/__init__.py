@@ -225,6 +225,8 @@ class ScriptCapabilityInfo(BaseModel):
     schema_hash: str
     parameters: list[ScriptParameterSpec] = Field(default_factory=list)
     source_devices: list[str] = Field(default_factory=list)
+    unit_price: Optional[int] = None
+    currency: Optional[str] = None
 
 
 class ScriptCapabilityListResponse(BaseModel):
@@ -264,3 +266,51 @@ class ScriptTemplateDetail(ScriptTemplateSummary):
 
 class ScriptTemplateListResponse(BaseModel):
     templates: list[ScriptTemplateSummary] = Field(default_factory=list)
+
+
+class ScriptDeviceInfo(BaseModel):
+    device_id: str
+    device_name: Optional[str] = None
+    device_model: Optional[str] = None
+    is_online: bool = False
+    compatibility: str
+
+
+class ScriptDeviceListResponse(BaseModel):
+    script_name: str
+    devices: list[ScriptDeviceInfo] = Field(default_factory=list)
+
+
+class ScriptJobTargetResponse(BaseModel):
+    id: str
+    device_id: str
+    command_id: Optional[str] = None
+    status: str
+    sent_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    result: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class ScriptJobResponse(BaseModel):
+    id: str
+    template_id: str
+    script_name: str
+    script_version: Optional[str] = None
+    status: str
+    total_targets: int
+    unit_price: Optional[int] = None
+    currency: Optional[str] = None
+    total_price: Optional[int] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    targets: list[ScriptJobTargetResponse] = Field(default_factory=list)
+
+
+class ScriptJobListResponse(BaseModel):
+    jobs: list[ScriptJobResponse] = Field(default_factory=list)
+
+
+class ScriptJobCreateRequest(BaseModel):
+    template_id: str = Field(..., description="模板ID")
+    device_ids: list[str] = Field(..., description="目标设备ID列表", min_length=1)

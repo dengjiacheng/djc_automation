@@ -2,6 +2,7 @@
 import json
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
@@ -12,6 +13,7 @@ from app.core.security import decode_access_token
 from app.domain.commands import CommandService
 from app.domain.devices import DeviceService, DeviceOwnershipError
 from app.domain.logs import LogService
+from app.domain.script_jobs import ScriptJobService
 from app.schemas import CommandResultUpdate, WSMessage
 from app.websocket.manager import manager
 
@@ -75,6 +77,7 @@ async def device_socket(websocket: WebSocket, token: str = Query(...), db: Async
     device_service = DeviceService.with_session(db)
     command_service = CommandService.with_session(db)
     log_service = LogService.with_session(db)
+    job_service = ScriptJobService.with_session(db)
     session: Optional[DeviceSession] = None
     try:
         token_data = decode_access_token(token)
@@ -158,7 +161,7 @@ async def _handle_device_message(
         return
 
     if msg_type == MESSAGE_RESULT:
-        await _handle_command_result(data.get("data", {}), command_service)
+        await _handle_command_result(data.get("data", {}), command_service, job_service)
         await db.commit()
         return
 
@@ -229,7 +232,11 @@ async def _process_session_init(
     session.mark_ready(device_id, capabilities)
 
 
-async def _handle_command_result(payload: dict, command_service: CommandService) -> None:
+async def _handle_command_result(
+    payload: dict,
+    command_service: CommandService,
+    job_service: ScriptJobService,
+) -> None:
     try:
         result = CommandResultUpdate(**payload)
     except Exception as exc:  # pylint: disable=broad-except
@@ -253,6 +260,24 @@ async def _handle_command_result(payload: dict, command_service: CommandService)
             device_id,
             {"type": MESSAGE_COMMAND_ACK, "data": {"command_id": result.command_id}},
         )
+
+    target = await job_service.mark_target_result(
+        command_id=result.command_id,
+        status="success" if result.status == "success" else "failed",
+        result=result.result,
+        error_message=result.error_message,
+        completed_at=datetime.utcnow().replace(tzinfo=timezone.utc),
+    )
+    if target:
+        targets = await job_service.get_targets(target.job_id)
+        if all(t.status in {"success", "failed"} for t in targets):
+            if all(t.status == "success" for t in targets):
+                new_status = "completed"
+            elif all(t.status == "failed" for t in targets):
+                new_status = "failed"
+            else:
+                new_status = "partial"
+            await job_service.update_job_status(target.job_id, new_status)
 
 
 async def _handle_command_progress(device_id: str, payload: dict, log_service: LogService) -> None:

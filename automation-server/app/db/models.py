@@ -92,3 +92,47 @@ class ScriptTemplate(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     owner = relationship("Account")
+
+
+class ScriptJob(Base):
+    __tablename__ = "script_jobs"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    owner_id = Column(String(36), ForeignKey("accounts.id"), nullable=False, index=True)
+    template_id = Column(String(36), ForeignKey("script_templates.id"), nullable=False, index=True)
+    script_name = Column(String(150), nullable=False, index=True)
+    script_version = Column(String(50))
+    schema_hash = Column(String(64), nullable=False)
+    total_targets = Column(Integer, nullable=False, default=0)
+    status = Column(String(20), nullable=False, default="pending")
+    unit_price = Column(Integer, nullable=True)
+    currency = Column(String(10), nullable=True)
+    total_price = Column(Integer, nullable=True)
+    meta = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    owner = relationship("Account")
+    template = relationship("ScriptTemplate")
+    targets = relationship(
+        "ScriptJobTarget",
+        back_populates="job",
+        cascade="all, delete-orphan",
+    )
+
+
+class ScriptJobTarget(Base):
+    __tablename__ = "script_job_targets"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    job_id = Column(String(36), ForeignKey("script_jobs.id"), nullable=False, index=True)
+    device_id = Column(String(36), ForeignKey("devices.id"), nullable=False)
+    command_id = Column(String(36), nullable=True, index=True)
+    status = Column(String(20), nullable=False, default="pending")
+    result = Column(Text)
+    error_message = Column(Text)
+    sent_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
+
+    job = relationship("ScriptJob", back_populates="targets")
+    device = relationship("Device")

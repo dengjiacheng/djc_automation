@@ -9,6 +9,9 @@ const customerState = {
   templates: [],
   currentFormParameters: [],
   editingTemplate: null,
+  scriptMap: {},
+  jobs: [],
+  executeContext: null,
 };
 
 const customerElements = {
@@ -18,6 +21,7 @@ const customerElements = {
   tabContents: {
     scripts: document.getElementById("scriptsContent"),
     templates: document.getElementById("templatesContent"),
+    jobs: document.getElementById("jobsContent"),
     devices: document.getElementById("devicesContent"),
   },
   scriptList: document.getElementById("scriptList"),
@@ -25,6 +29,8 @@ const customerElements = {
   refreshScriptsBtn: document.getElementById("refreshScriptsBtn"),
   templateTable: document.getElementById("templateTable"),
   refreshTemplatesBtn: document.getElementById("refreshTemplatesBtn"),
+  jobsTable: document.getElementById("jobsTable"),
+  refreshJobsBtn: document.getElementById("refreshJobsBtn"),
   deviceTable: document.getElementById("customerDeviceTable"),
   templateFormModal: document.getElementById("templateFormModal"),
   templateForm: document.getElementById("templateForm"),
@@ -41,6 +47,15 @@ const customerElements = {
   templateInfoTitle: document.getElementById("templateInfoTitle"),
   templateInfoBody: document.getElementById("templateInfoBody"),
   templateModalCloseButtons: document.querySelectorAll("[data-close-modal]"),
+  executeModal: document.getElementById("executeModal"),
+  executeModalTitle: document.getElementById("executeModalTitle"),
+  executeMeta: document.getElementById("executeMeta"),
+  executeDeviceList: document.getElementById("executeDeviceList"),
+  executeCostSummary: document.getElementById("executeCostSummary"),
+  executeConfigPreview: document.getElementById("executeConfigPreview"),
+  executeMessage: document.getElementById("executeMessage"),
+  executeSubmitBtn: document.getElementById("executeSubmitBtn"),
+  toastContainer: document.getElementById("toastContainer"),
 };
 
 localStorage.removeItem("customer_token");
@@ -52,6 +67,21 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function showToast(message, type = "success") {
+  if (!customerElements.toastContainer) {
+    alert(message);
+    return;
+  }
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `<p>${escapeHtml(message)}</p>`;
+  customerElements.toastContainer.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add("fade-out");
+    toast.addEventListener("transitionend", () => toast.remove(), { once: true });
+  }, 2800);
 }
 
 function handleLogout() {
@@ -122,6 +152,9 @@ async function loadScripts() {
   try {
     const data = await requestJson("/api/customer/templates/scripts");
     customerState.scripts = data.scripts || [];
+    customerState.scriptMap = Object.fromEntries(
+      customerState.scripts.map((script) => [script.script_name, script])
+    );
     renderScriptList();
   } catch (error) {
     console.error("加载脚本失败", error);
@@ -182,6 +215,7 @@ function renderScriptDetail(script) {
   }
   const description = escapeHtml(script.description || "该脚本暂无描述");
   const parameters = script.parameters || [];
+  const priceInfo = formatPrice(script.unit_price, script.currency || "CNY");
   const parameterRows = parameters.length
     ? parameters
         .map((param) => `
@@ -206,7 +240,7 @@ function renderScriptDetail(script) {
         </div>
     </div>
     <div class="script-detail-body">
-        <div class="muted">版本：${escapeHtml(script.version || "未提供")} · 支持设备：${script.source_devices?.length || 0}</div>
+        <div class="muted">版本：${escapeHtml(script.version || "未提供")} · 支持设备：${script.source_devices?.length || 0} · 单价：${priceInfo}</div>
         <div class="table-wrapper">
             <table class="parameter-table">
                 <thead>
@@ -252,6 +286,7 @@ function renderTemplateTable() {
     .map((template) => {
       const updatedAt = template.updated_at ? new Date(template.updated_at).toLocaleString("zh-CN") : "-";
       const statusBadge = buildCompatibilityBadge(template.compatibility);
+      const executeDisabled = template.compatibility !== "active" ? "disabled" : "";
       return `
         <tr data-template-id="${escapeHtml(template.id)}">
             <td>${escapeHtml(template.script_title || template.script_name)}</td>
@@ -261,6 +296,7 @@ function renderTemplateTable() {
             <td>${updatedAt}</td>
             <td class="text-right">
                 <div class="template-actions">
+                    <button class="btn btn--primary btn--sm" data-action="execute" ${executeDisabled}>执行</button>
                     <button class="btn btn--ghost btn--sm" data-action="view">详情</button>
                     <button class="btn btn--outline btn--sm" data-action="edit">编辑</button>
                     <button class="btn btn--danger btn--sm" data-action="delete">删除</button>
@@ -296,6 +332,21 @@ function buildCompatibilityBadge(status) {
       return '<span class="badge badge-warning">待更新</span>';
     case "unavailable":
       return '<span class="badge badge-danger">不可用</span>';
+    default:
+      return `<span class="badge">${status || "未知"}</span>`;
+  }
+}
+
+function buildJobStatusBadge(status) {
+  switch (status) {
+    case "running":
+      return '<span class="badge badge-warning">执行中</span>';
+    case "completed":
+      return '<span class="badge badge-success">已完成</span>';
+    case "partial":
+      return '<span class="badge badge-warning">部分完成</span>';
+    case "failed":
+      return '<span class="badge badge-danger">失败</span>';
     default:
       return `<span class="badge">${status || "未知"}</span>`;
   }
@@ -353,6 +404,73 @@ function renderDevices(devices) {
         <tbody>${rows}</tbody>
     </table>
   `;
+}
+
+async function loadJobs() {
+  if (!customerElements.jobsTable) return;
+  customerElements.jobsTable.innerHTML = '<div class="loading">加载中...</div>';
+  try {
+    const data = await requestJson("/api/customer/script-jobs");
+    customerState.jobs = data.jobs || [];
+    renderJobTable();
+  } catch (error) {
+    console.error("加载任务失败", error);
+    customerElements.jobsTable.innerHTML = `<div class="empty-state">${error.message || "任务加载失败"}</div>`;
+  }
+}
+
+function renderJobTable() {
+  if (!customerElements.jobsTable) return;
+  const jobs = customerState.jobs;
+  if (!jobs.length) {
+    customerElements.jobsTable.innerHTML = '<div class="empty-state">暂无任务记录，创建模板后即可执行脚本。</div>';
+    return;
+  }
+  const rows = jobs
+    .map((job) => {
+      const createdAt = job.created_at ? new Date(job.created_at).toLocaleString("zh-CN") : "-";
+      const totalPrice = job.total_price !== null ? formatPrice(job.total_price, job.currency || "CNY") : "-";
+      const successCount = job.targets.filter((target) => target.status === "success").length;
+      const failCount = job.targets.filter((target) => target.status === "failed").length;
+      const statusBadge = buildJobStatusBadge(job.status);
+      return `
+        <tr data-job-id="${escapeHtml(job.id)}">
+            <td>${escapeHtml(job.script_name)}</td>
+            <td>${escapeHtml(job.script_version || "-")}</td>
+            <td>${job.total_targets}</td>
+            <td>${successCount}/${failCount}</td>
+            <td>${totalPrice}</td>
+            <td>${createdAt}</td>
+            <td>${statusBadge}</td>
+            <td class="text-right"><button class="btn btn--ghost btn--sm" data-action="job-detail">详情</button></td>
+        </tr>
+      `;
+    })
+    .join("");
+  customerElements.jobsTable.innerHTML = `
+    <table>
+        <thead>
+            <tr>
+                <th>脚本</th>
+                <th>版本</th>
+                <th>目标设备</th>
+                <th>成功/失败</th>
+                <th>费用</th>
+                <th>创建时间</th>
+                <th>状态</th>
+                <th class="text-right">操作</th>
+            </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+    </table>
+  `;
+  customerElements.jobsTable.querySelectorAll("[data-action='job-detail']").forEach((btn) => {
+    btn.addEventListener("click", async (event) => {
+      const jobRow = event.target.closest("tr[data-job-id]");
+      if (!jobRow) return;
+      await openJobDetail(jobRow.dataset.jobId);
+    });
+  });
 }
 
 function openTemplateForm(mode, script, template = null) {
@@ -428,6 +546,16 @@ function closeModal(modal) {
   }
   if (modal === customerElements.templateInfoModal) {
     customerElements.templateInfoBody.innerHTML = "";
+  }
+  if (modal === customerElements.executeModal) {
+    customerState.executeContext = null;
+    customerElements.executeMessage.textContent = "";
+    if (customerElements.executeDeviceList) {
+      customerElements.executeDeviceList.innerHTML = "";
+    }
+    if (customerElements.executeCostSummary) {
+      customerElements.executeCostSummary.innerHTML = '<p class="muted">选择设备后自动计算费用。</p>';
+    }
   }
 }
 
@@ -519,6 +647,14 @@ function formatDisplayValue(value) {
   return String(value);
 }
 
+function formatPrice(cents, currency = "CNY") {
+  if (cents === null || cents === undefined) {
+    return "暂无定价";
+  }
+  const amount = (cents / 100).toFixed(2);
+  return `${amount} ${currency}`;
+}
+
 function formatInputValue(value, type) {
   if (value === null || value === undefined) return "";
   const valueType = (type || "string").toLowerCase();
@@ -590,6 +726,9 @@ async function handleTemplateAction(event) {
       case "edit":
         await openTemplateEditor(templateId);
         break;
+      case "execute":
+        await openExecuteModal(templateId);
+        break;
       case "delete":
         await deleteTemplate(templateId);
         break;
@@ -637,6 +776,53 @@ async function openTemplateEditor(templateId) {
   openTemplateForm("edit", script, detail);
 }
 
+async function openJobDetail(jobId) {
+  if (!customerElements.templateInfoBody) return;
+  customerElements.templateInfoBody.innerHTML = '<div class="loading">加载中...</div>';
+  openModal(customerElements.templateInfoModal);
+  const job = await requestJson(`/api/customer/script-jobs/${jobId}`);
+  customerElements.templateInfoTitle.textContent = `任务 ${job.id.slice(0, 8)}...`;
+  const targetsRows = job.targets
+    .map((target) => {
+      const statusBadge = buildJobStatusBadge(target.status);
+      const completedAt = target.completed_at ? new Date(target.completed_at).toLocaleString("zh-CN") : "-";
+      return `
+        <tr>
+            <td>${escapeHtml(target.device_id)}</td>
+            <td>${statusBadge}</td>
+            <td>${escapeHtml(target.command_id || "-")}</td>
+            <td>${completedAt}</td>
+            <td>${escapeHtml(target.error_message || "-")}</td>
+        </tr>
+      `;
+    })
+    .join("");
+  const totalPrice = job.total_price !== null ? formatPrice(job.total_price, job.currency || "CNY") : "-";
+  customerElements.templateInfoBody.innerHTML = `
+    <section>
+        <h4>任务概览</h4>
+        <p class="muted">脚本：${escapeHtml(job.script_name)} · 模板：${escapeHtml(job.template_id)}</p>
+        <p class="muted">状态：${buildJobStatusBadge(job.status)} · 总费用：${totalPrice}</p>
+        <p class="muted">创建时间：${job.created_at ? new Date(job.created_at).toLocaleString("zh-CN") : "-"}</p>
+    </section>
+    <section>
+        <h4>设备执行详情</h4>
+        <table class="parameter-table">
+            <thead>
+                <tr>
+                    <th>设备</th>
+                    <th>状态</th>
+                    <th>指令ID</th>
+                    <th>完成时间</th>
+                    <th>错误信息</th>
+                </tr>
+            </thead>
+            <tbody>${targetsRows}</tbody>
+        </table>
+    </section>
+  `;
+}
+
 async function deleteTemplate(templateId) {
   const template = customerState.templates.find((item) => item.id === templateId);
   if (!template) return;
@@ -644,6 +830,138 @@ async function deleteTemplate(templateId) {
   if (!confirmed) return;
   await requestJson(`/api/customer/templates/${templateId}`, { method: "DELETE" });
   await loadTemplates();
+}
+
+async function openExecuteModal(templateId) {
+  if (!customerElements.executeModal) return;
+  customerElements.executeMessage.textContent = "";
+  customerElements.executeSubmitBtn.disabled = true;
+  customerElements.executeDeviceList.innerHTML = '<div class="loading">加载中...</div>';
+  customerElements.executeCostSummary.innerHTML = '<p class="muted">选择设备后自动计算费用。</p>';
+  try {
+    const templateDetail = await requestJson(`/api/customer/templates/${templateId}`);
+    const script = customerState.scriptMap[templateDetail.script_name];
+    if (!script) {
+      throw new Error("脚本当前不可用，请刷新脚本列表");
+    }
+    if (templateDetail.compatibility !== "active") {
+      throw new Error("模板与脚本参数不一致，请先更新模板");
+    }
+
+    const devicesResp = await requestJson(`/api/customer/scripts/${encodeURIComponent(templateDetail.script_name)}/devices`);
+    const selectableDevices = (devicesResp.devices || []).map((device) => ({
+      ...device,
+      isSelectable: device.compatibility === "active",
+    }));
+
+    const defaultSelection = new Set(selectableDevices.filter((d) => d.isSelectable).map((d) => d.device_id));
+
+    customerState.executeContext = {
+      template: templateDetail,
+      script,
+      devices: selectableDevices,
+      unitPrice: script.unit_price,
+      currency: script.currency || "CNY",
+      selectedDeviceIds: defaultSelection,
+    };
+
+    customerElements.executeModalTitle.textContent = templateDetail.script_title || templateDetail.script_name;
+    customerElements.executeMeta.innerHTML = `模板：${escapeHtml(templateDetail.script_title || templateDetail.script_name)} · 脚本：${escapeHtml(templateDetail.script_name)} · 版本：${escapeHtml(templateDetail.script_version || "-")}`;
+    customerElements.executeConfigPreview.textContent = JSON.stringify(templateDetail.config || {}, null, 2);
+    renderExecuteDeviceList();
+    updateExecuteCostSummary();
+    customerElements.executeSubmitBtn.disabled = false;
+    openModal(customerElements.executeModal);
+  } catch (error) {
+    console.error("打开执行弹窗失败", error);
+    showToast(error.message || "无法执行", "error");
+  }
+}
+
+function renderExecuteDeviceList() {
+  if (!customerElements.executeDeviceList) return;
+  const context = customerState.executeContext;
+  if (!context) {
+    customerElements.executeDeviceList.innerHTML = '<div class="empty-state">数据加载失败</div>';
+    return;
+  }
+  if (!context.devices.length) {
+    customerElements.executeDeviceList.innerHTML = '<div class="empty-state">暂无可用设备</div>';
+    return;
+  }
+  const items = context.devices
+    .map((device) => {
+      const disabled = !device.isSelectable;
+      const checked = context.selectedDeviceIds.has(device.device_id);
+      const compatibility = device.compatibility === "active"
+        ? '<span class="badge badge-success">可执行</span>'
+        : device.compatibility === "stale"
+          ? '<span class="badge badge-warning">参数失配</span>'
+          : '<span class="badge badge-danger">不可用</span>';
+      return `
+        <div class="device-item ${disabled ? "is-disabled" : ""}">
+            <input type="checkbox" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""} data-device-id="${escapeHtml(device.device_id)}">
+            <label>
+                <span class="device-name">${escapeHtml(device.device_name || device.device_id)} ${compatibility}</span>
+                <span class="device-meta-line">${escapeHtml(device.device_model || "型号未知")}</span>
+            </label>
+        </div>
+      `;
+    })
+    .join("");
+  customerElements.executeDeviceList.innerHTML = items;
+}
+
+function updateExecuteCostSummary() {
+  if (!customerElements.executeCostSummary) return;
+  const context = customerState.executeContext;
+  if (!context) {
+    customerElements.executeCostSummary.innerHTML = '<p class="muted">暂无数据</p>';
+    if (customerElements.executeSubmitBtn) customerElements.executeSubmitBtn.disabled = true;
+    return;
+  }
+  const count = context.selectedDeviceIds.size;
+  if (!count) {
+    customerElements.executeCostSummary.innerHTML = '<p class="muted">请选择设备以计算费用</p>';
+    if (customerElements.executeSubmitBtn) customerElements.executeSubmitBtn.disabled = true;
+    return;
+  }
+  const unitPriceText = formatPrice(context.unitPrice, context.currency);
+  const total = context.unitPrice !== null ? formatPrice(context.unitPrice * count, context.currency) : "-";
+  customerElements.executeCostSummary.innerHTML = `
+    <div>选中设备：<strong>${count}</strong> 台</div>
+    <div>单价：${unitPriceText}</div>
+    <div class="cost-total">预计费用：${total}</div>
+  `;
+  if (customerElements.executeSubmitBtn) customerElements.executeSubmitBtn.disabled = false;
+}
+
+async function submitExecuteJob() {
+  if (!customerState.executeContext) return;
+  const context = customerState.executeContext;
+  customerElements.executeMessage.textContent = "";
+  if (!context.selectedDeviceIds.size) {
+    customerElements.executeMessage.textContent = "请至少选择一个设备";
+    return;
+  }
+  customerElements.executeSubmitBtn.disabled = true;
+  try {
+    await requestJson("/api/customer/script-jobs", {
+      method: "POST",
+      body: {
+        template_id: context.template.id,
+        device_ids: Array.from(context.selectedDeviceIds),
+      },
+    });
+    showToast("任务已创建，正在下发指令", "success");
+    closeModal(customerElements.executeModal);
+    await loadJobs();
+  } catch (error) {
+    console.error("执行脚本失败", error);
+    customerElements.executeMessage.textContent = error.message || "执行失败";
+  } finally {
+    customerElements.executeSubmitBtn.disabled = false;
+  }
 }
 
 function registerEventListeners() {
@@ -657,6 +975,8 @@ function registerEventListeners() {
         loadScripts();
       } else if (tab.dataset.tab === "templates") {
         loadTemplates();
+      } else if (tab.dataset.tab === "jobs") {
+        loadJobs();
       } else if (tab.dataset.tab === "devices") {
         loadDevices();
       }
@@ -667,6 +987,9 @@ function registerEventListeners() {
   }
   if (customerElements.refreshTemplatesBtn) {
     customerElements.refreshTemplatesBtn.addEventListener("click", loadTemplates);
+  }
+  if (customerElements.refreshJobsBtn) {
+    customerElements.refreshJobsBtn.addEventListener("click", loadJobs);
   }
   if (customerElements.scriptList) {
     customerElements.scriptList.addEventListener("click", (event) => {
@@ -691,10 +1014,27 @@ function registerEventListeners() {
       closeModal(modal);
     });
   });
+  if (customerElements.executeDeviceList) {
+    customerElements.executeDeviceList.addEventListener("change", (event) => {
+      const checkbox = event.target.closest("input[type='checkbox'][data-device-id]");
+      if (!checkbox || !customerState.executeContext) return;
+      const deviceId = checkbox.dataset.deviceId;
+      if (checkbox.checked) {
+        customerState.executeContext.selectedDeviceIds.add(deviceId);
+      } else {
+        customerState.executeContext.selectedDeviceIds.delete(deviceId);
+      }
+      updateExecuteCostSummary();
+    });
+  }
+  if (customerElements.executeSubmitBtn) {
+    customerElements.executeSubmitBtn.addEventListener("click", submitExecuteJob);
+  }
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeModal(customerElements.templateFormModal);
       closeModal(customerElements.templateInfoModal);
+      closeModal(customerElements.executeModal);
     }
   });
 }
@@ -712,7 +1052,7 @@ async function initCustomerApp() {
     await loadProfile();
     registerEventListeners();
     // 默认加载脚本、模板和设备
-    await Promise.all([loadScripts(), loadTemplates(), loadDevices()]);
+    await Promise.all([loadScripts(), loadTemplates(), loadJobs(), loadDevices()]);
   } catch (error) {
     console.error("初始化客户控制台失败", error);
     handleLogout();

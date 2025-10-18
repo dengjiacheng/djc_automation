@@ -4,7 +4,8 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-from typing import Any, Dict, Iterable
+from datetime import datetime, timezone
+from typing import Any, Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,12 +15,21 @@ from app.core.security import get_current_account
 from app.domain.accounts import Account as AccountDomain
 from app.domain.devices import DeviceService
 from app.domain.templates import ScriptTemplateService
+from app.domain.script_jobs import ScriptJobService
+from app.domain.script_jobs.models import ScriptJob, ScriptJobTarget
+from app.domain.commands import CommandService
 from app.schemas import (
     AccountResponse,
     DeviceListResponse,
     DeviceResponse,
     ScriptCapabilityInfo,
     ScriptCapabilityListResponse,
+    ScriptDeviceInfo,
+    ScriptDeviceListResponse,
+    ScriptJobListResponse,
+    ScriptJobResponse,
+    ScriptJobTargetResponse,
+    ScriptJobCreateRequest,
     ScriptParameterSpec,
     ScriptTemplateCreate,
     ScriptTemplateDetail,
@@ -120,7 +130,7 @@ async def create_script_template(
 async def list_script_templates(
     account: AccountDomain = Depends(get_current_customer),
     db: AsyncSession = Depends(get_db_session),
-) -> dict[str, list[ScriptTemplateSummary]]:
+) -> ScriptTemplateListResponse:
     service = ScriptTemplateService.with_session(db)
     templates = await service.list_templates(account.id)
     scripts = _collect_script_capabilities()
@@ -213,6 +223,186 @@ async def delete_script_template(
     return {"success": True}
 
 
+@router.get(
+    "/scripts/{script_name}/devices",
+    response_model=ScriptDeviceListResponse,
+    summary="获取脚本可执行设备列表",
+)
+async def list_script_devices(
+    script_name: str,
+    account: AccountDomain = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db_session),
+) -> ScriptDeviceListResponse:
+    scripts = _collect_script_capabilities()
+    capability = scripts.get(script_name)
+    service = DeviceService.with_session(db)
+    summary = await service.list_devices_by_username(account.username)
+    devices: list[ScriptDeviceInfo] = []
+    for device in summary.devices:
+        status = _device_compatibility(device.id, capability)
+        devices.append(
+            ScriptDeviceInfo(
+                device_id=device.id,
+                device_name=device.device_name,
+                device_model=device.device_model,
+                is_online=manager.is_online(device.id),
+                compatibility=status,
+            )
+        )
+    return ScriptDeviceListResponse(script_name=script_name, devices=devices)
+
+
+@router.post(
+    "/script-jobs",
+    response_model=ScriptJobResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="创建脚本执行任务",
+)
+async def create_script_job(
+    payload: ScriptJobCreateRequest,
+    account: AccountDomain = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db_session),
+) -> ScriptJobResponse:
+    template_service = ScriptTemplateService.with_session(db)
+    job_service = ScriptJobService.with_session(db)
+    command_service = CommandService.with_session(db)
+
+    template = await template_service.get_template(payload.template_id)
+    if template is None or template.owner_id != account.id or template.status == "deleted":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="模板不存在")
+
+    scripts = _collect_script_capabilities()
+    capability = scripts.get(template.script_name)
+    if capability is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="脚本当前不可用，无法执行")
+    if _determine_compatibility(template.schema_hash, capability) != "active":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="模板与脚本参数不一致，请先更新模板")
+
+    device_service = DeviceService.with_session(db)
+    summary = await device_service.list_devices_by_username(account.username)
+    device_map = {device.id: device for device in summary.devices}
+
+    unique_device_ids = []
+    for device_id in payload.device_ids:
+        if device_id not in unique_device_ids:
+            unique_device_ids.append(device_id)
+
+    selected_devices = []
+    for device_id in unique_device_ids:
+        device = device_map.get(device_id)
+        if device is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"设备 {device_id} 不属于当前账号")
+        status_flag = _device_compatibility(device_id, capability)
+        if status_flag != "active":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"设备 {device.device_name or device_id} 当前不支持该脚本或参数已失配")
+        selected_devices.append(device)
+
+    if not selected_devices:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请选择至少一个可执行设备")
+
+    unit_price = _extract_unit_price(capability.get("pricing"))
+    currency = _extract_currency(capability.get("pricing")) or "CNY"
+    total_price = unit_price * len(selected_devices) if unit_price is not None else None
+
+    execution_config = copy.deepcopy(template.defaults)
+    params = {
+        "task_name": template.script_name,
+        "config": execution_config,
+    }
+
+    targets_payload = []
+    now = datetime.now(timezone.utc)
+    sent_count = 0
+
+    for device in selected_devices:
+        command = await command_service.create_command(
+            device.id,
+            action="start_task",
+            params=params,
+            user_id=account.id,
+        )
+        sent = await manager.send_command(device.id, command)
+        status_flag = "sent" if sent else "failed"
+        sent_at = now if sent else None
+        if sent:
+            sent_count += 1
+            await command_service.mark_sent(command.id, now)
+        targets_payload.append(
+            {
+                "device_id": device.id,
+                "command_id": command.id if sent else None,
+                "status": status_flag,
+                "sent_at": sent_at,
+                "completed_at": None,
+            }
+        )
+
+    job_meta = {
+        "currency": currency,
+    }
+    job, targets = await job_service.create_job(
+        owner_id=account.id,
+        template_id=template.id,
+        script_name=template.script_name,
+        script_version=template.script_version,
+        schema_hash=template.schema_hash,
+        targets=targets_payload,
+        unit_price=unit_price,
+        currency=currency if unit_price is not None else None,
+        total_price=total_price,
+        meta=job_meta,
+    )
+
+    if sent_count == 0:
+        await job_service.update_job_status(job.id, "failed")
+    elif sent_count == len(targets_payload):
+        await job_service.update_job_status(job.id, "running")
+    else:
+        await job_service.update_job_status(job.id, "partial")
+
+    await db.commit()
+
+    persisted_job = await job_service.get_job(job.id)
+    persisted_targets = await job_service.get_targets(job.id)
+    return _to_job_response(persisted_job or job, persisted_targets or targets)
+
+
+@router.get(
+    "/script-jobs",
+    response_model=ScriptJobListResponse,
+    summary="获取脚本执行任务列表",
+)
+async def list_script_jobs(
+    account: AccountDomain = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db_session),
+) -> ScriptJobListResponse:
+    job_service = ScriptJobService.with_session(db)
+    jobs = await job_service.list_jobs(account.id)
+    responses: list[ScriptJobResponse] = []
+    for job in jobs:
+        targets = await job_service.get_targets(job.id)
+        responses.append(_to_job_response(job, targets))
+    return ScriptJobListResponse(jobs=responses)
+
+
+@router.get(
+    "/script-jobs/{job_id}",
+    response_model=ScriptJobResponse,
+    summary="获取脚本执行任务详情",
+)
+async def get_script_job(
+    job_id: str,
+    account: AccountDomain = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db_session),
+) -> ScriptJobResponse:
+    job_service = ScriptJobService.with_session(db)
+    job = await job_service.get_job(job_id)
+    if job is None or job.owner_id != account.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    targets = await job_service.get_targets(job.id)
+    return _to_job_response(job, targets)
+
+
 def _collect_script_capabilities() -> dict[str, dict[str, Any]]:
     """Aggregate script capabilities from currently online devices."""
     aggregated: dict[str, dict[str, Any]] = {}
@@ -254,17 +444,24 @@ def _merge_script_capability(
         "parameters": copy.deepcopy(script.get("parameters") or entry.get("params") or []),
     }
     schema_hash = _compute_schema_hash(schema)
+    pricing = script.get("pricing") or entry.get("meta", {}).get("pricing") or {}
     record = aggregated.get(script_name)
     if record is None:
         aggregated[script_name] = {
             "schema": schema,
             "schema_hash": schema_hash,
-            "source_devices": {device_id},
+            "source_devices": {device_id: schema_hash},
+            "pricing": pricing,
         }
         return
-    record["source_devices"].add(device_id)
+    sources = record.setdefault("source_devices", {})
+    if isinstance(sources, set):
+        sources = {item: schema_hash for item in sources}
+    sources[device_id] = schema_hash
+    record["source_devices"] = sources
+    if pricing and not record.get("pricing"):
+        record["pricing"] = pricing
     if record["schema_hash"] != schema_hash:
-        # Prefer the latest hash; replace schema if new hash appears
         record["schema"] = schema
         record["schema_hash"] = schema_hash
 
@@ -368,7 +565,9 @@ def _to_script_capability_info(name: str, data: dict[str, Any]) -> ScriptCapabil
         version=schema.get("version"),
         schema_hash=data["schema_hash"],
         parameters=parameters,
-        source_devices=sorted(data.get("source_devices", [])),
+        source_devices=sorted(data.get("source_devices", {}).keys()),
+        unit_price=_extract_unit_price(data.get("pricing")),
+        currency=_extract_currency(data.get("pricing")),
     )
 
 
@@ -396,3 +595,68 @@ def _to_template_detail_response(template, compatibility: str) -> ScriptTemplate
         config=config_dict,
         notes=template.notes,
     )
+
+
+def _to_job_response(job: ScriptJob, targets: list[ScriptJobTarget]) -> ScriptJobResponse:
+    return ScriptJobResponse(
+        id=job.id,
+        template_id=job.template_id,
+        script_name=job.script_name,
+        script_version=job.script_version,
+        status=job.status,
+        total_targets=job.total_targets,
+        unit_price=job.unit_price,
+        currency=job.currency,
+        total_price=job.total_price,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        targets=[
+            ScriptJobTargetResponse(
+                id=target.id,
+                device_id=target.device_id,
+                command_id=target.command_id,
+                status=target.status,
+                sent_at=target.sent_at,
+                completed_at=target.completed_at,
+                result=target.result,
+                error_message=target.error_message,
+            )
+            for target in targets
+        ],
+    )
+
+
+def _extract_unit_price(pricing: dict[str, Any] | None) -> int | None:
+    if not isinstance(pricing, dict):
+        return None
+    value = pricing.get("unit_price") or pricing.get("price")
+    if value is None:
+        return None
+    try:
+        # Store as分 (integer). Assume pricing is in元 float
+        cents = int(round(float(value) * 100))
+        return cents
+    except (ValueError, TypeError):
+        return None
+
+
+def _extract_currency(pricing: dict[str, Any] | None) -> str | None:
+    if not isinstance(pricing, dict):
+        return None
+    currency = pricing.get("currency") or pricing.get("unit")
+    if isinstance(currency, str):
+        return currency.upper()
+    return None
+
+
+def _device_compatibility(device_id: str, capability: dict[str, Any] | None) -> str:
+    if capability is None:
+        return "unavailable"
+    sources = capability.get("source_devices") or {}
+    if device_id not in sources:
+        return "unsupported"
+    current_hash = capability.get("schema_hash")
+    device_hash = sources.get(device_id)
+    if device_hash == current_hash:
+        return "active"
+    return "stale"
