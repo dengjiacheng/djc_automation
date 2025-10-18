@@ -207,3 +207,60 @@ class TestApkInfo(BaseModel):
     app: TestApkAssetInfo
     test: TestApkAssetInfo
     created_at: Optional[str] = None
+
+
+class ScriptParameterSpec(BaseModel):
+    name: str
+    type: Optional[str] = None
+    required: bool = False
+    description: Optional[str] = None
+    default: Optional[Any] = None
+
+
+class ScriptCapabilityInfo(BaseModel):
+    script_name: str
+    script_title: Optional[str] = None
+    description: Optional[str] = None
+    version: Optional[str] = None
+    schema_hash: str
+    parameters: list[ScriptParameterSpec] = Field(default_factory=list)
+    source_devices: list[str] = Field(default_factory=list)
+
+
+class ScriptCapabilityListResponse(BaseModel):
+    scripts: list[ScriptCapabilityInfo] = Field(default_factory=list)
+
+
+class ScriptTemplateCreate(BaseModel):
+    script_name: str = Field(..., description="脚本唯一名称")
+    script_title: Optional[str] = Field(None, description="模板显示名称，默认使用脚本名称")
+    script_version: Optional[str] = Field(None, description="脚本版本标记，如果上报能力中存在")
+    config: dict[str, Any] = Field(default_factory=dict, description="脚本配置项，例如 config.search_keyword 等")
+    notes: Optional[str] = Field(None, description="模板备注")
+
+
+class ScriptTemplateUpdate(BaseModel):
+    config: Optional[dict[str, Any]] = None
+    notes: Optional[str] = None
+
+
+class ScriptTemplateSummary(BaseModel):
+    id: str
+    script_name: str
+    script_title: Optional[str] = None
+    script_version: Optional[str] = None
+    status: str
+    schema_hash: str
+    compatibility: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class ScriptTemplateDetail(ScriptTemplateSummary):
+    schema: dict[str, Any] = Field(default_factory=dict)
+    config: dict[str, Any] = Field(default_factory=dict)
+    notes: Optional[str] = None
+
+
+class ScriptTemplateListResponse(BaseModel):
+    templates: list[ScriptTemplateSummary] = Field(default_factory=list)

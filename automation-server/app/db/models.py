@@ -73,3 +73,22 @@ class DeviceLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     device = relationship("Device", back_populates="logs")
+
+
+class ScriptTemplate(Base):
+    __tablename__ = "script_templates"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    owner_id = Column(String(36), ForeignKey("accounts.id"), nullable=False, index=True)
+    script_name = Column(String(150), nullable=False, index=True)
+    script_title = Column(String(255))
+    script_version = Column(String(50))
+    schema_hash = Column(String(64), nullable=False)
+    schema = Column(Text, nullable=False)
+    defaults = Column(Text, nullable=False)
+    notes = Column(Text)
+    status = Column(String(20), nullable=False, default="active")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    owner = relationship("Account")
