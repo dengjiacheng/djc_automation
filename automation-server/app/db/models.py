@@ -136,3 +136,32 @@ class ScriptJobTarget(Base):
 
     job = relationship("ScriptJob", back_populates="targets")
     device = relationship("Device")
+
+
+class Wallet(Base):
+    __tablename__ = "wallets"
+
+    account_id = Column(String(36), ForeignKey("accounts.id"), primary_key=True)
+    balance_cents = Column(Integer, nullable=False, default=0)
+    currency = Column(String(10), nullable=False, default="CNY")
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    account = relationship("Account")
+    transactions = relationship("WalletTransaction", back_populates="wallet", cascade="all, delete-orphan")
+
+
+class WalletTransaction(Base):
+    __tablename__ = "wallet_transactions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    account_id = Column(String(36), ForeignKey("accounts.id"), nullable=False, index=True)
+    job_id = Column(String(36), ForeignKey("script_jobs.id"), nullable=True)
+    amount_cents = Column(Integer, nullable=False)
+    currency = Column(String(10), nullable=False, default="CNY")
+    type = Column(String(20), nullable=False, default="freeze")  # freeze, capture, refund
+    description = Column(String(255))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    wallet = relationship("Wallet", back_populates="transactions")
+    job = relationship("ScriptJob")

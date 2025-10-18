@@ -17,6 +17,7 @@ from app.domain.devices import DeviceService
 from app.domain.templates import ScriptTemplateService
 from app.domain.script_jobs import ScriptJobService
 from app.domain.script_jobs.models import ScriptJob, ScriptJobTarget
+from app.domain.wallets import WalletService
 from app.domain.commands import CommandService
 from app.schemas import (
     AccountResponse,
@@ -265,6 +266,7 @@ async def create_script_job(
 ) -> ScriptJobResponse:
     template_service = ScriptTemplateService.with_session(db)
     job_service = ScriptJobService.with_session(db)
+    wallet_service = WalletService.with_session(db)
     command_service = CommandService.with_session(db)
 
     template = await template_service.get_template(payload.template_id)
@@ -300,71 +302,18 @@ async def create_script_job(
     if not selected_devices:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请选择至少一个可执行设备")
 
-    unit_price = _extract_unit_price(capability.get("pricing"))
-    currency = _extract_currency(capability.get("pricing")) or "CNY"
-    total_price = unit_price * len(selected_devices) if unit_price is not None else None
-
-    execution_config = copy.deepcopy(template.defaults)
-    params = {
-        "task_name": template.script_name,
-        "config": execution_config,
-    }
-
-    targets_payload = []
-    now = datetime.now(timezone.utc)
-    sent_count = 0
-
-    for device in selected_devices:
-        command = await command_service.create_command(
-            device.id,
-            action="start_task",
-            params=params,
-            user_id=account.id,
-        )
-        sent = await manager.send_command(device.id, command)
-        status_flag = "sent" if sent else "failed"
-        sent_at = now if sent else None
-        if sent:
-            sent_count += 1
-            await command_service.mark_sent(command.id, now)
-        targets_payload.append(
-            {
-                "device_id": device.id,
-                "command_id": command.id if sent else None,
-                "status": status_flag,
-                "sent_at": sent_at,
-                "completed_at": None,
-            }
-        )
-
-    job_meta = {
-        "currency": currency,
-    }
-    job, targets = await job_service.create_job(
-        owner_id=account.id,
-        template_id=template.id,
-        script_name=template.script_name,
-        script_version=template.script_version,
-        schema_hash=template.schema_hash,
-        targets=targets_payload,
-        unit_price=unit_price,
-        currency=currency if unit_price is not None else None,
-        total_price=total_price,
-        meta=job_meta,
+    job_response = await _start_job_execution(
+        account=account,
+        template=template,
+        capability=capability,
+        devices=selected_devices,
+        db=db,
+        job_service=job_service,
+        wallet_service=wallet_service,
+        command_service=command_service,
     )
-
-    if sent_count == 0:
-        await job_service.update_job_status(job.id, "failed")
-    elif sent_count == len(targets_payload):
-        await job_service.update_job_status(job.id, "running")
-    else:
-        await job_service.update_job_status(job.id, "partial")
-
     await db.commit()
-
-    persisted_job = await job_service.get_job(job.id)
-    persisted_targets = await job_service.get_targets(job.id)
-    return _to_job_response(persisted_job or job, persisted_targets or targets)
+    return job_response
 
 
 @router.get(
@@ -401,6 +350,63 @@ async def get_script_job(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     targets = await job_service.get_targets(job.id)
     return _to_job_response(job, targets)
+
+
+@router.post(
+    "/script-jobs/{job_id}/retry",
+    response_model=ScriptJobResponse,
+    summary="重试脚本任务的失败设备",
+)
+async def retry_script_job(
+    job_id: str,
+    account: AccountDomain = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db_session),
+) -> ScriptJobResponse:
+    job_service = ScriptJobService.with_session(db)
+    template_service = ScriptTemplateService.with_session(db)
+    wallet_service = WalletService.with_session(db)
+    command_service = CommandService.with_session(db)
+    job = await job_service.get_job(job_id)
+    if job is None or job.owner_id != account.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    targets = await job_service.get_targets(job.id)
+    failed_devices = [target.device_id for target in targets if target.status != "success"]
+    if not failed_devices:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="没有失败的设备需要重试")
+    template = await template_service.get_template(job.template_id)
+    if template is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="模板不存在或已删除")
+    scripts = _collect_script_capabilities()
+    capability = scripts.get(template.script_name)
+    if capability is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="脚本当前不可用，无法重试")
+
+    device_service = DeviceService.with_session(db)
+    summary = await device_service.list_devices_by_username(account.username)
+    device_map = {device.id: device for device in summary.devices}
+    selected_devices = []
+    for device_id in failed_devices:
+        device = device_map.get(device_id)
+        if device is None:
+            continue
+        if _device_compatibility(device_id, capability) != "active":
+            continue
+        selected_devices.append(device)
+    if not selected_devices:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="失败设备当前不可执行脚本")
+
+    job_response = await _start_job_execution(
+        account=account,
+        template=template,
+        capability=capability,
+        devices=selected_devices,
+        db=db,
+        job_service=job_service,
+        wallet_service=wallet_service,
+        command_service=command_service,
+    )
+    await db.commit()
+    return job_response
 
 
 def _collect_script_capabilities() -> dict[str, dict[str, Any]]:
@@ -444,7 +450,7 @@ def _merge_script_capability(
         "parameters": copy.deepcopy(script.get("parameters") or entry.get("params") or []),
     }
     schema_hash = _compute_schema_hash(schema)
-    pricing = script.get("pricing") or entry.get("meta", {}).get("pricing") or {}
+    pricing = _normalize_pricing(script.get("pricing") or entry.get("meta", {}).get("pricing"))
     record = aggregated.get(script_name)
     if record is None:
         aggregated[script_name] = {
@@ -459,7 +465,7 @@ def _merge_script_capability(
         sources = {item: schema_hash for item in sources}
     sources[device_id] = schema_hash
     record["source_devices"] = sources
-    if pricing and not record.get("pricing"):
+    if pricing:
         record["pricing"] = pricing
     if record["schema_hash"] != schema_hash:
         record["schema"] = schema
@@ -568,6 +574,7 @@ def _to_script_capability_info(name: str, data: dict[str, Any]) -> ScriptCapabil
         source_devices=sorted(data.get("source_devices", {}).keys()),
         unit_price=_extract_unit_price(data.get("pricing")),
         currency=_extract_currency(data.get("pricing")),
+        pricing=data.get("pricing"),
     )
 
 
@@ -626,6 +633,102 @@ def _to_job_response(job: ScriptJob, targets: list[ScriptJobTarget]) -> ScriptJo
     )
 
 
+async def _start_job_execution(
+    *,
+    account: AccountDomain,
+    template,
+    capability: dict[str, Any],
+    devices,
+    db: AsyncSession,
+    job_service: ScriptJobService,
+    wallet_service: WalletService,
+    command_service: CommandService,
+) -> ScriptJobResponse:
+    pricing = capability.get("pricing") or {}
+    unit_price = _extract_unit_price(pricing)
+    currency = _extract_currency(pricing) or "CNY"
+    total_price = unit_price * len(devices) if unit_price is not None else None
+
+    if total_price and total_price > 0:
+        snapshot = await wallet_service.ensure_wallet(account.id, currency)
+        if snapshot.balance_cents < total_price:
+            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="余额不足，请先充值后执行")
+
+    execution_config = copy.deepcopy(template.defaults)
+    params = {
+        "task_name": template.script_name,
+        "config": execution_config,
+    }
+
+    targets_payload = []
+    now = datetime.now(timezone.utc)
+    sent_count = 0
+
+    for device in devices:
+        command = await command_service.create_command(
+            device.id,
+            action="start_task",
+            params=params,
+            user_id=account.id,
+        )
+        sent = await manager.send_command(device.id, command)
+        status_flag = "sent" if sent else "failed"
+        sent_at = now if sent else None
+        if sent:
+            sent_count += 1
+            await command_service.mark_sent(command.id, now)
+        targets_payload.append(
+            {
+                "device_id": device.id,
+                "command_id": command.id if sent else None,
+                "status": status_flag,
+                "sent_at": sent_at,
+                "completed_at": None,
+            }
+        )
+
+    job_meta = {
+        "currency": currency,
+        "pricing": pricing,
+    }
+    job, targets = await job_service.create_job(
+        owner_id=account.id,
+        template_id=template.id,
+        script_name=template.script_name,
+        script_version=template.script_version,
+        schema_hash=template.schema_hash,
+        targets=targets_payload,
+        unit_price=unit_price,
+        currency=currency if unit_price is not None else None,
+        total_price=total_price,
+        meta=job_meta,
+    )
+
+    if total_price and total_price > 0:
+        try:
+            await wallet_service.freeze_amount(
+                account_id=account.id,
+                job_id=job.id,
+                amount_cents=total_price,
+                currency=currency,
+                description=f"脚本 {template.script_name} 执行冻结",
+            )
+        except ValueError as exc:
+            await job_service.update_job_status(job.id, "failed")
+            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)) from exc
+
+    if sent_count == 0:
+        await job_service.update_job_status(job.id, "failed")
+    elif sent_count == len(targets_payload):
+        await job_service.update_job_status(job.id, "running")
+    else:
+        await job_service.update_job_status(job.id, "partial")
+
+    persisted_job = await job_service.get_job(job.id)
+    persisted_targets = await job_service.get_targets(job.id)
+    return _to_job_response(persisted_job or job, persisted_targets or targets)
+
+
 def _extract_unit_price(pricing: dict[str, Any] | None) -> int | None:
     if not isinstance(pricing, dict):
         return None
@@ -647,6 +750,39 @@ def _extract_currency(pricing: dict[str, Any] | None) -> str | None:
     if isinstance(currency, str):
         return currency.upper()
     return None
+
+
+def _normalize_pricing(pricing: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(pricing, dict):
+        return None
+    normalized: dict[str, Any] = {}
+    if "currency" in pricing:
+        normalized["currency"] = pricing.get("currency")
+    if "unit" in pricing and "currency" not in normalized:
+        normalized["currency"] = pricing.get("unit")
+    if pricing.get("unit_price") is not None:
+        normalized["unit_price"] = pricing["unit_price"]
+    elif pricing.get("price") is not None:
+        normalized["unit_price"] = pricing["price"]
+    tiers = pricing.get("tiers")
+    if isinstance(tiers, list):
+        normalized_tiers = []
+        for tier in tiers:
+            if not isinstance(tier, dict):
+                continue
+            entry = {
+                "threshold": tier.get("threshold"),
+                "price": tier.get("price"),
+                "label": tier.get("label"),
+            }
+            normalized_tiers.append(entry)
+        if normalized_tiers:
+            normalized["tiers"] = normalized_tiers
+    if pricing.get("billing"):
+        normalized["billing"] = pricing.get("billing")
+    if pricing.get("description"):
+        normalized["description"] = pricing.get("description")
+    return normalized
 
 
 def _device_compatibility(device_id: str, capability: dict[str, Any] | None) -> str:

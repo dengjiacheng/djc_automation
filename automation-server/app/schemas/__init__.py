@@ -227,6 +227,7 @@ class ScriptCapabilityInfo(BaseModel):
     source_devices: list[str] = Field(default_factory=list)
     unit_price: Optional[int] = None
     currency: Optional[str] = None
+    pricing: Optional[dict[str, Any]] = None
 
 
 class ScriptCapabilityListResponse(BaseModel):

@@ -69,7 +69,17 @@
                             <h2 class="section-title">脚本执行记录</h2>
                             <p class="section-subtitle">查看历史任务、成本与结果</p>
                         </div>
-                        <button class="btn btn--ghost" id="refreshJobsBtn">刷新</button>
+                        <div class="jobs-toolbar">
+                            <select class="form-control" id="jobStatusFilter">
+                                <option value="all">全部状态</option>
+                                <option value="running">执行中</option>
+                                <option value="completed">已完成</option>
+                                <option value="partial">部分完成</option>
+                                <option value="failed">失败</option>
+                            </select>
+                            <button class="btn btn--ghost" id="refreshJobsBtn">刷新</button>
+                            <button class="btn btn--outline" id="exportJobsBtn">导出 CSV</button>
+                        </div>
                     </header>
                     <div class="table-responsive" id="jobsTable">
                         <div class="loading">加载中...</div>

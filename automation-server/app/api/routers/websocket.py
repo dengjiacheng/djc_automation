@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db_session
 from app.core.security import decode_access_token
 from app.domain.commands import CommandService
+from app.domain.wallets import WalletService
 from app.domain.devices import DeviceService, DeviceOwnershipError
 from app.domain.logs import LogService
 from app.domain.script_jobs import ScriptJobService
@@ -78,6 +79,7 @@ async def device_socket(websocket: WebSocket, token: str = Query(...), db: Async
     command_service = CommandService.with_session(db)
     log_service = LogService.with_session(db)
     job_service = ScriptJobService.with_session(db)
+    wallet_service = WalletService.with_session(db)
     session: Optional[DeviceSession] = None
     try:
         token_data = decode_access_token(token)
@@ -87,14 +89,15 @@ async def device_socket(websocket: WebSocket, token: str = Query(...), db: Async
         session = DeviceSession(websocket=websocket, username=username)
         while True:
             message = await websocket.receive_text()
-            await _handle_device_message(
-                session=session,
-                raw=message,
-                device_service=device_service,
-                command_service=command_service,
-                log_service=log_service,
-                db=db,
-            )
+        await _handle_device_message(
+            session=session,
+            raw=message,
+            device_service=device_service,
+            command_service=command_service,
+            log_service=log_service,
+            wallet_service=wallet_service,
+            db=db,
+        )
     except WebSocketDisconnect:
         logger.info("Device %s disconnected", session.device_id if session and session.device_id else "unknown")
     except Exception as exc:  # pylint: disable=broad-except
@@ -124,6 +127,7 @@ async def _handle_device_message(
     device_service: DeviceService,
     command_service: CommandService,
     log_service: LogService,
+    wallet_service: WalletService,
     db: AsyncSession,
 ) -> None:
     data = _parse_json(raw)
@@ -161,7 +165,7 @@ async def _handle_device_message(
         return
 
     if msg_type == MESSAGE_RESULT:
-        await _handle_command_result(data.get("data", {}), command_service, job_service)
+        await _handle_command_result(data.get("data", {}), command_service, job_service, wallet_service)
         await db.commit()
         return
 
@@ -236,6 +240,7 @@ async def _handle_command_result(
     payload: dict,
     command_service: CommandService,
     job_service: ScriptJobService,
+    wallet_service: WalletService,
 ) -> None:
     try:
         result = CommandResultUpdate(**payload)
@@ -270,14 +275,52 @@ async def _handle_command_result(
     )
     if target:
         targets = await job_service.get_targets(target.job_id)
-        if all(t.status in {"success", "failed"} for t in targets):
-            if all(t.status == "success" for t in targets):
+        success_count = sum(1 for t in targets if t.status == "success")
+        fail_count = sum(1 for t in targets if t.status == "failed")
+        finished = all(t.status in {"success", "failed"} for t in targets)
+        new_status = None
+        if finished:
+            if success_count == len(targets):
                 new_status = "completed"
-            elif all(t.status == "failed" for t in targets):
+            elif success_count == 0:
                 new_status = "failed"
             else:
                 new_status = "partial"
             await job_service.update_job_status(target.job_id, new_status)
+        job = await job_service.get_job(target.job_id)
+        if finished and job and job.unit_price is not None:
+            total_amount = (job.unit_price or 0) * job.total_targets
+            success_amount = (job.unit_price or 0) * success_count
+            refund_amount = max(total_amount - success_amount, 0)
+            currency = job.currency or "CNY"
+            if refund_amount > 0:
+                await wallet_service.refund_amount(
+                    account_id=job.owner_id,
+                    job_id=job.id,
+                    amount_cents=refund_amount,
+                    currency=currency,
+                    description="脚本执行失败退款",
+                )
+            if success_amount > 0:
+                await wallet_service.capture_amount(
+                    account_id=job.owner_id,
+                    job_id=job.id,
+                    amount_cents=success_amount,
+                    currency=currency,
+                    description="脚本执行扣费",
+                )
+        if job:
+            message = {
+                "job_id": job.id,
+                "status": job.status,
+                "success_count": success_count,
+                "failed_count": fail_count,
+                "total_targets": len(targets),
+                "device_id": target.device_id,
+                "target_status": target.status,
+                "finished": finished,
+            }
+            await manager.send_to_web(job.owner_id, {"type": "script_job_update", "data": message})
 
 
 async def _handle_command_progress(device_id: str, payload: dict, log_service: LogService) -> None:

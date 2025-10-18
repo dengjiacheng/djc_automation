@@ -12,6 +12,8 @@ const customerState = {
   scriptMap: {},
   jobs: [],
   executeContext: null,
+  jobFilter: "all",
+  ws: null,
 };
 
 const customerElements = {
@@ -31,6 +33,8 @@ const customerElements = {
   refreshTemplatesBtn: document.getElementById("refreshTemplatesBtn"),
   jobsTable: document.getElementById("jobsTable"),
   refreshJobsBtn: document.getElementById("refreshJobsBtn"),
+  exportJobsBtn: document.getElementById("exportJobsBtn"),
+  jobStatusFilter: document.getElementById("jobStatusFilter"),
   deviceTable: document.getElementById("customerDeviceTable"),
   templateFormModal: document.getElementById("templateFormModal"),
   templateForm: document.getElementById("templateForm"),
@@ -85,6 +89,14 @@ function showToast(message, type = "success") {
 }
 
 function handleLogout() {
+  if (customerState.ws) {
+    try {
+      customerState.ws.close();
+    } catch (error) {
+      console.error("关闭 WebSocket 失败", error);
+    }
+    customerState.ws = null;
+  }
   localStorage.removeItem("auth_token");
   localStorage.removeItem("auth_role");
   localStorage.removeItem("auth_username");
@@ -131,6 +143,36 @@ function switchTab(target) {
       el.classList.toggle("active", key === target);
     }
   });
+}
+
+function initCustomerWebSocket() {
+  if (customerState.ws || !customerState.token) {
+    return;
+  }
+  try {
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const socket = new WebSocket(`${protocol}://${window.location.host}/ws/web?token=${customerState.token}`);
+    customerState.ws = socket;
+    socket.addEventListener("message", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === "script_job_update") {
+          handleJobUpdate(payload.data || {});
+        }
+      } catch (error) {
+        console.error("解析消息失败", error);
+      }
+    });
+    socket.addEventListener("close", () => {
+      customerState.ws = null;
+      setTimeout(initCustomerWebSocket, 5000);
+    });
+    socket.addEventListener("error", () => {
+      socket.close();
+    });
+  } catch (error) {
+    console.error("建立 WebSocket 失败", error);
+  }
 }
 
 async function loadProfile() {
@@ -241,6 +283,7 @@ function renderScriptDetail(script) {
     </div>
     <div class="script-detail-body">
         <div class="muted">版本：${escapeHtml(script.version || "未提供")} · 支持设备：${script.source_devices?.length || 0} · 单价：${priceInfo}</div>
+        ${renderPricingDetails(script.pricing)}
         <div class="table-wrapper">
             <table class="parameter-table">
                 <thead>
@@ -260,6 +303,37 @@ function renderScriptDetail(script) {
   if (createBtn) {
     createBtn.addEventListener("click", () => openTemplateForm("create", script));
   }
+}
+
+function renderPricingDetails(pricing) {
+  if (!pricing) {
+    return "";
+  }
+  const rows = [];
+  if (pricing.tiers && pricing.tiers.length) {
+    const tierRows = pricing.tiers
+      .map((tier) => `
+        <tr>
+            <td>${escapeHtml(tier.label || `${tier.threshold || "-"}`)}</td>
+            <td>${tier.threshold !== undefined ? escapeHtml(String(tier.threshold)) : "-"}</td>
+            <td>${tier.price !== undefined ? escapeHtml(String(tier.price)) : "-"}</td>
+        </tr>
+      `)
+      .join("");
+    rows.push(`
+      <div class="pricing-card">
+          <h4>阶梯定价</h4>
+          <table class="parameter-table">
+              <thead><tr><th>描述</th><th>阈值</th><th>价格</th></tr></thead>
+              <tbody>${tierRows}</tbody>
+          </table>
+      </div>
+    `);
+  }
+  if (pricing.description) {
+    rows.push(`<p class="muted">${escapeHtml(pricing.description)}</p>`);
+  }
+  return rows.join("\n");
 }
 
 async function loadTemplates() {
@@ -426,7 +500,14 @@ function renderJobTable() {
     customerElements.jobsTable.innerHTML = '<div class="empty-state">暂无任务记录，创建模板后即可执行脚本。</div>';
     return;
   }
-  const rows = jobs
+  const filtered = customerState.jobFilter === "all"
+    ? jobs
+    : jobs.filter((job) => job.status === customerState.jobFilter);
+  if (!filtered.length) {
+    customerElements.jobsTable.innerHTML = '<div class="empty-state">当前筛选条件下暂无任务</div>';
+    return;
+  }
+  const rows = filtered
     .map((job) => {
       const createdAt = job.created_at ? new Date(job.created_at).toLocaleString("zh-CN") : "-";
       const totalPrice = job.total_price !== null ? formatPrice(job.total_price, job.currency || "CNY") : "-";
@@ -655,6 +736,12 @@ function formatPrice(cents, currency = "CNY") {
   return `${amount} ${currency}`;
 }
 
+function handleJobUpdate(data) {
+  if (!data || !data.job_id) return;
+  showToast(`任务 ${data.job_id.slice(0, 8)} 状态更新为 ${data.status}`, "success");
+  loadJobs();
+}
+
 function formatInputValue(value, type) {
   if (value === null || value === undefined) return "";
   const valueType = (type || "string").toLowerCase();
@@ -781,6 +868,7 @@ async function openJobDetail(jobId) {
   customerElements.templateInfoBody.innerHTML = '<div class="loading">加载中...</div>';
   openModal(customerElements.templateInfoModal);
   const job = await requestJson(`/api/customer/script-jobs/${jobId}`);
+  customerState.currentJobDetail = job;
   customerElements.templateInfoTitle.textContent = `任务 ${job.id.slice(0, 8)}...`;
   const targetsRows = job.targets
     .map((target) => {
@@ -805,6 +893,9 @@ async function openJobDetail(jobId) {
         <p class="muted">状态：${buildJobStatusBadge(job.status)} · 总费用：${totalPrice}</p>
         <p class="muted">创建时间：${job.created_at ? new Date(job.created_at).toLocaleString("zh-CN") : "-"}</p>
     </section>
+    <section class="job-detail-toolbar">
+        ${job.targets.some((target) => target.status !== "success") ? '<button class="btn btn--primary btn--sm" id="retryJobBtn">重试失败设备</button>' : ""}
+    </section>
     <section>
         <h4>设备执行详情</h4>
         <table class="parameter-table">
@@ -821,6 +912,10 @@ async function openJobDetail(jobId) {
         </table>
     </section>
   `;
+  const retryBtn = document.getElementById("retryJobBtn");
+  if (retryBtn) {
+    retryBtn.addEventListener("click", () => retryFailedTargets(job));
+  }
 }
 
 async function deleteTemplate(templateId) {
@@ -932,6 +1027,8 @@ function updateExecuteCostSummary() {
     <div>选中设备：<strong>${count}</strong> 台</div>
     <div>单价：${unitPriceText}</div>
     <div class="cost-total">预计费用：${total}</div>
+    ${context.script.pricing && context.script.pricing.description ? `<p class="muted">${escapeHtml(context.script.pricing.description)}</p>` : ""}
+    ${context.script.pricing && context.script.pricing.tiers ? `<p class="muted">阶梯说明：${context.script.pricing.tiers.map((t) => escapeHtml(`${t.label || t.threshold || ""}:${t.price}`)).join(" / ")}</p>` : ""}
   `;
   if (customerElements.executeSubmitBtn) customerElements.executeSubmitBtn.disabled = false;
 }
@@ -964,6 +1061,63 @@ async function submitExecuteJob() {
   }
 }
 
+function exportJobsToCsv() {
+  if (!customerState.jobs.length) {
+    showToast("暂无任务可导出", "error");
+    return;
+  }
+  const rows = [
+    ["job_id", "script_name", "script_version", "status", "total_targets", "success_count", "failed_count", "total_price", "currency", "created_at"],
+  ];
+  customerState.jobs.forEach((job) => {
+    const successCount = job.targets.filter((t) => t.status === "success").length;
+    const failedCount = job.targets.filter((t) => t.status === "failed").length;
+    rows.push([
+      job.id,
+      job.script_name,
+      job.script_version || "",
+      job.status,
+      job.total_targets,
+      successCount,
+      failedCount,
+      job.total_price !== null ? (job.total_price / 100).toFixed(2) : "",
+      job.currency || "",
+      job.created_at ? new Date(job.created_at).toISOString() : "",
+    ]);
+  });
+  const csvContent = rows
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `script-jobs-${Date.now()}.csv`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+  showToast("导出成功", "success");
+}
+
+async function retryFailedTargets(job) {
+  const failedDevices = job.targets.filter((target) => target.status !== "success").map((target) => target.device_id);
+  if (!failedDevices.length) {
+    showToast("没有失败的设备", "error");
+    return;
+  }
+  try {
+    await requestJson(`/api/customer/script-jobs/${job.id}/retry`, {
+      method: "POST",
+    });
+    showToast("已重新触发失败设备执行", "success");
+    closeModal(customerElements.templateInfoModal);
+    await loadJobs();
+  } catch (error) {
+    showToast(error.message || "重试失败", "error");
+  }
+}
+
 function registerEventListeners() {
   if (customerElements.logoutBtn) {
     customerElements.logoutBtn.addEventListener("click", handleLogout);
@@ -990,6 +1144,15 @@ function registerEventListeners() {
   }
   if (customerElements.refreshJobsBtn) {
     customerElements.refreshJobsBtn.addEventListener("click", loadJobs);
+  }
+  if (customerElements.exportJobsBtn) {
+    customerElements.exportJobsBtn.addEventListener("click", exportJobsToCsv);
+  }
+  if (customerElements.jobStatusFilter) {
+    customerElements.jobStatusFilter.addEventListener("change", (event) => {
+      customerState.jobFilter = event.target.value;
+      renderJobTable();
+    });
   }
   if (customerElements.scriptList) {
     customerElements.scriptList.addEventListener("click", (event) => {
@@ -1053,6 +1216,7 @@ async function initCustomerApp() {
     registerEventListeners();
     // 默认加载脚本、模板和设备
     await Promise.all([loadScripts(), loadTemplates(), loadJobs(), loadDevices()]);
+    initCustomerWebSocket();
   } catch (error) {
     console.error("初始化客户控制台失败", error);
     handleLogout();

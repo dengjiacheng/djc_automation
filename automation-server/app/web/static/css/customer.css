@@ -274,6 +274,13 @@
     background: rgba(99, 102, 241, 0.08);
 }
 
+.pricing-card {
+    background: var(--color-surface);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: var(--radius-md);
+    padding: 12px;
+}
+
 .compatibility-badge {
     display: inline-flex;
     align-items: center;
@@ -383,6 +390,12 @@
 .modal-footer {
     border-top: 1px solid rgba(148, 163, 184, 0.24);
     border-bottom: none;
+}
+
+.jobs-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
 .modal-body {
@@ -547,10 +560,19 @@
     .scripts-layout {
         grid-template-columns: 1fr;
     }
+
+    .execute-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 768px) {
     .customer-shell .table-responsive table {
         min-width: 640px;
     }
+}
+
+.job-detail-toolbar {
+    display: flex;
+    justify-content: flex-end;
 }
