@@ -171,7 +171,7 @@ class WalletTransaction(Base):
     __tablename__ = "wallet_transactions"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    account_id = Column(String(36), ForeignKey("accounts.id"), nullable=False, index=True)
+    account_id = Column(String(36), ForeignKey("wallets.account_id"), nullable=False, index=True)
     job_id = Column(String(36), ForeignKey("script_jobs.id"), nullable=True)
     amount_cents = Column(Integer, nullable=False)
     currency = Column(String(10), nullable=False, default="CNY")
