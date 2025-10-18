@@ -73,6 +73,26 @@ class WalletService:
         wallet = await self.repository.get_wallet(account_id)
         return self._to_snapshot(wallet)
 
+    async def credit_amount(
+        self,
+        *,
+        account_id: str,
+        amount_cents: int,
+        currency: str = "CNY",
+        description: Optional[str] = None,
+        reference_job_id: str | None = None,
+    ) -> WalletSnapshot:
+        wallet = await self.repository.update_balance(account_id, amount_cents)
+        await self.repository.add_transaction(
+            account_id=account_id,
+            job_id=reference_job_id,
+            amount_cents=amount_cents,
+            currency=currency,
+            type="topup",
+            description=description or "钱包充值",
+        )
+        return self._to_snapshot(wallet)
+
     async def refund_amount(
         self,
         *,

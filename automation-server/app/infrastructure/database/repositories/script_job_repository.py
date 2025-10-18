@@ -80,6 +80,19 @@ class SqlScriptJobRepository:
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
+    async def list_jobs_admin(
+        self,
+        *,
+        status: str | None,
+        limit: int,
+        offset: int,
+    ) -> Sequence[ScriptJob]:
+        stmt = select(ScriptJob).order_by(desc(ScriptJob.created_at)).offset(offset).limit(limit)
+        if status and status != "all":
+            stmt = stmt.where(ScriptJob.status == status)
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
     async def list_targets(self, job_id: str) -> Sequence[ScriptJobTarget]:
         stmt = select(ScriptJobTarget).where(ScriptJobTarget.job_id == job_id)
         result = await self.session.execute(stmt)

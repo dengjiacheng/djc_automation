@@ -351,3 +351,11 @@ class WalletTopupResponse(BaseModel):
     reference_no: Optional[str] = None
     created_at: datetime
     confirmed_at: Optional[datetime] = None
+
+
+class WalletTopupListResponse(BaseModel):
+    orders: list[WalletTopupResponse] = Field(default_factory=list)
+
+
+class WalletTopupReviewRequest(BaseModel):
+    action: str = Field(..., pattern="^(approve|reject)$")

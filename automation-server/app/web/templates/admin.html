@@ -59,6 +59,8 @@
                 <div class="tabs">
                     <button class="tab" data-tab="apk">APK 管理</button>
                     <button class="tab active" data-tab="devices">设备管理</button>
+                    <button class="tab" data-tab="jobs">任务监控</button>
+                    <button class="tab" data-tab="wallet">资金管理</button>
                     <button class="tab hidden" data-tab="admins" id="adminsTab">管理员</button>
                 </div>
 
@@ -153,6 +155,72 @@
                             </div>
                             <div class="table-responsive" id="adminsListBody">
                                 <div class="loading">加载中...</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="tab-content" id="jobsContent">
+                    <div class="tab-panel">
+                        <div class="table-card">
+                            <div class="table-toolbar">
+                                <div>
+                                    <h2 class="section-title">脚本任务监控</h2>
+                                    <p class="section-subtitle">查看全局脚本执行状态，支持筛选与详情</p>
+                                </div>
+                                <div class="jobs-toolbar">
+                                    <select class="form-control" id="adminJobStatusFilter">
+                                        <option value="all">全部状态</option>
+                                        <option value="running">执行中</option>
+                                        <option value="completed">已完成</option>
+                                        <option value="partial">部分完成</option>
+                                        <option value="failed">失败</option>
+                                    </select>
+                                    <button class="btn btn--ghost" id="refreshAdminJobsBtn">刷新</button>
+                                </div>
+                            </div>
+                            <div class="table-responsive" id="adminJobsTable">
+                                <div class="loading">加载中...</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="tab-content" id="walletContent">
+                    <div class="tab-panel stack-lg">
+                        <div class="card">
+                            <header class="card-toolbar">
+                                <div>
+                                    <h2>充值审核</h2>
+                                    <p class="muted">处理客户提交的充值请求</p>
+                                </div>
+                                <div class="jobs-toolbar">
+                                    <select class="form-control" id="topupStatusFilter">
+                                        <option value="pending">待审核</option>
+                                        <option value="success">已到账</option>
+                                        <option value="failed">已拒绝</option>
+                                        <option value="all">全部</option>
+                                    </select>
+                                    <button class="btn btn--ghost" id="refreshTopupsBtn">刷新</button>
+                                </div>
+                            </header>
+                            <div class="table-responsive" id="topupTable">
+                                <div class="loading">加载中...</div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <header class="card-toolbar">
+                                <div>
+                                    <h2>账户账单</h2>
+                                    <p class="muted">查询指定账号的钱包交易记录</p>
+                                </div>
+                                <div class="jobs-toolbar">
+                                    <input class="form-control" id="transactionAccountInput" placeholder="输入账号ID">
+                                    <button class="btn btn--ghost" id="searchTransactionsBtn">查询</button>
+                                </div>
+                            </header>
+                            <div class="table-responsive" id="transactionTable">
+                                <div class="empty-state">请输入账号ID后查询</div>
                             </div>
                         </div>
                     </div>

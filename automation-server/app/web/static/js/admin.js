@@ -5,6 +5,11 @@ const adminState = {
   isSuperAdmin: false,
   currentTab: "devices",
   refreshTimer: null,
+  jobs: [],
+  jobFilter: "all",
+  topups: [],
+  topupFilter: "pending",
+  transactions: [],
 };
 
 const adminElements = {
@@ -23,6 +28,15 @@ const adminElements = {
   createAdminBtn: document.getElementById("createAdminBtn"),
   logoutBtn: document.getElementById("logoutBtn"),
   scriptLabBtn: document.getElementById("scriptLabBtn"),
+  adminJobsTable: document.getElementById("adminJobsTable"),
+  refreshAdminJobsBtn: document.getElementById("refreshAdminJobsBtn"),
+  adminJobStatusFilter: document.getElementById("adminJobStatusFilter"),
+  topupTable: document.getElementById("topupTable"),
+  refreshTopupsBtn: document.getElementById("refreshTopupsBtn"),
+  topupStatusFilter: document.getElementById("topupStatusFilter"),
+  transactionTable: document.getElementById("transactionTable"),
+  transactionAccountInput: document.getElementById("transactionAccountInput"),
+  searchTransactionsBtn: document.getElementById("searchTransactionsBtn"),
 };
 
 // 初始化入口
@@ -81,6 +95,32 @@ function bindAdminEvents() {
 
   if (adminElements.apkUploadForm) {
     adminElements.apkUploadForm.addEventListener("submit", handleApkUpload);
+  }
+
+  if (adminElements.refreshAdminJobsBtn) {
+    adminElements.refreshAdminJobsBtn.addEventListener("click", loadAdminJobs);
+  }
+
+  if (adminElements.adminJobStatusFilter) {
+    adminElements.adminJobStatusFilter.addEventListener("change", (event) => {
+      adminState.jobFilter = event.target.value;
+      loadAdminJobs();
+    });
+  }
+
+  if (adminElements.refreshTopupsBtn) {
+    adminElements.refreshTopupsBtn.addEventListener("click", loadTopups);
+  }
+
+  if (adminElements.topupStatusFilter) {
+    adminElements.topupStatusFilter.addEventListener("change", (event) => {
+      adminState.topupFilter = event.target.value;
+      loadTopups();
+    });
+  }
+
+  if (adminElements.searchTransactionsBtn) {
+    adminElements.searchTransactionsBtn.addEventListener("click", loadTransactions);
   }
 
   adminElements.devicesTableBody.addEventListener("click", (event) => {
@@ -451,6 +491,244 @@ async function loadAdmins() {
   }
 }
 
+async function loadAdminJobs() {
+  if (!adminElements.adminJobsTable) return;
+  adminElements.adminJobsTable.innerHTML = '<div class="loading">加载中...</div>';
+  try {
+    const status = adminState.jobFilter || "all";
+    const response = await fetchAPI(`/api/admin/script-jobs?status_filter=${encodeURIComponent(status)}`);
+    const data = await response.json();
+    adminState.jobs = data.jobs || [];
+    renderAdminJobs();
+  } catch (error) {
+    console.error("加载任务失败", error);
+    adminElements.adminJobsTable.innerHTML = `<div class="empty-state">${error.message || "任务加载失败"}</div>`;
+  }
+}
+
+function renderAdminJobs() {
+  if (!adminElements.adminJobsTable) return;
+  const jobs = adminState.jobs;
+  if (!jobs.length) {
+    adminElements.adminJobsTable.innerHTML = '<div class="empty-state">暂无任务记录</div>';
+    return;
+  }
+  const rows = jobs
+    .map((job) => {
+      const createdAt = job.created_at ? new Date(job.created_at).toLocaleString("zh-CN") : "-";
+      const successCount = job.targets.filter((target) => target.status === "success").length;
+      const failCount = job.targets.filter((target) => target.status === "failed").length;
+      const statusBadge = buildJobStatusBadge(job.status);
+      return `
+        <tr data-job-id="${job.id}">
+            <td>${job.script_name}</td>
+            <td>${job.script_version || "-"}</td>
+            <td>${job.total_targets}</td>
+            <td>${successCount}/${failCount}</td>
+            <td>${job.total_price !== null ? (job.total_price / 100).toFixed(2) : "-"}</td>
+            <td>${createdAt}</td>
+            <td>${statusBadge}</td>
+            <td class="text-right"><button class="btn btn--ghost btn--sm" data-action="view-job">详情</button></td>
+        </tr>
+      `;
+    })
+    .join("");
+  adminElements.adminJobsTable.innerHTML = `
+    <table>
+        <thead>
+            <tr>
+                <th>脚本</th>
+                <th>版本</th>
+                <th>目标数</th>
+                <th>成功/失败</th>
+                <th>总费用</th>
+                <th>创建时间</th>
+                <th>状态</th>
+                <th class="text-right">操作</th>
+            </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+    </table>
+  `;
+  adminElements.adminJobsTable.querySelectorAll("[data-action='view-job']").forEach((btn) => {
+    btn.addEventListener("click", async (event) => {
+      const tr = event.target.closest("tr[data-job-id]");
+      if (!tr) return;
+      await openAdminJobDetail(tr.dataset.jobId);
+    });
+  });
+}
+
+async function openAdminJobDetail(jobId) {
+  try {
+    const response = await fetchAPI(`/api/admin/script-jobs/${jobId}`);
+    const job = await response.json();
+    const jobInfo = [
+      `脚本：${job.script_name}`,
+      `版本：${job.script_version || "-"}`,
+      `状态：${job.status}`,
+      `总目标数：${job.total_targets}`,
+    ].join(" · ");
+    const rows = job.targets
+      .map((target) => `
+        <tr>
+            <td>${target.device_id}</td>
+            <td>${buildJobStatusBadge(target.status)}</td>
+            <td>${target.command_id || "-"}</td>
+            <td>${target.completed_at ? new Date(target.completed_at).toLocaleString("zh-CN") : "-"}</td>
+            <td>${target.error_message || "-"}</td>
+        </tr>
+      `)
+      .join("");
+    alert(
+      `${jobInfo}\n\n执行详情:\n`+
+      rows.replace(/<[^>]+>/g, "")
+    );
+  } catch (error) {
+    alert(error.message || "加载任务详情失败");
+  }
+}
+
+async function loadTopups() {
+  if (!adminElements.topupTable) return;
+  adminElements.topupTable.innerHTML = '<div class="loading">加载中...</div>';
+  try {
+    const status = adminState.topupFilter || "pending";
+    const response = await fetchAPI(`/api/admin/wallet/topups?status_filter=${encodeURIComponent(status)}`);
+    const data = await response.json();
+    adminState.topups = data.orders || [];
+    renderTopups();
+  } catch (error) {
+    console.error("加载充值订单失败", error);
+    adminElements.topupTable.innerHTML = `<div class="empty-state">${error.message || "充值订单加载失败"}</div>`;
+  }
+}
+
+function renderTopups() {
+  if (!adminElements.topupTable) return;
+  const orders = adminState.topups;
+  if (!orders.length) {
+    adminElements.topupTable.innerHTML = '<div class="empty-state">暂无充值订单</div>';
+    return;
+  }
+  const rows = orders
+    .map((order) => {
+      const createdAt = order.created_at ? new Date(order.created_at).toLocaleString("zh-CN") : "-";
+      const confirmedAt = order.confirmed_at ? new Date(order.confirmed_at).toLocaleString("zh-CN") : "-";
+      const amount = (order.amount_cents / 100).toFixed(2);
+      const actionButtons = order.status === "pending"
+        ? `
+            <button class="btn btn--primary btn--sm" data-action="approve" data-order-id="${order.id}">通过</button>
+            <button class="btn btn--danger btn--sm" data-action="reject" data-order-id="${order.id}">拒绝</button>
+          `
+        : '<span class="muted">已处理</span>';
+      return `
+        <tr>
+            <td>${order.id}</td>
+            <td>${order.account_id}</td>
+            <td>${amount} ${order.currency}</td>
+            <td>${order.status}</td>
+            <td>${order.payment_channel || "-"}</td>
+            <td>${order.reference_no || "-"}</td>
+            <td>${createdAt}</td>
+            <td>${confirmedAt}</td>
+            <td class="text-right">${actionButtons}</td>
+        </tr>
+      `;
+    })
+    .join("");
+  adminElements.topupTable.innerHTML = `
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>账户</th>
+                <th>金额</th>
+                <th>状态</th>
+                <th>渠道</th>
+                <th>参考号</th>
+                <th>创建时间</th>
+                <th>确认时间</th>
+                <th class="text-right">操作</th>
+            </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+    </table>
+  `;
+  adminElements.topupTable.querySelectorAll("[data-action]").forEach((btn) => {
+    btn.addEventListener("click", () => reviewTopup(btn.dataset.orderId, btn.dataset.action));
+  });
+}
+
+async function reviewTopup(orderId, action) {
+  try {
+    await fetchAPI(`/api/admin/wallet/topups/${orderId}/review`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+      headers: { "Content-Type": "application/json" },
+    });
+    alert("处理成功");
+    await loadTopups();
+  } catch (error) {
+    alert(error.message || "处理失败");
+  }
+}
+
+async function loadTransactions() {
+  if (!adminElements.transactionTable) return;
+  const accountId = adminElements.transactionAccountInput?.value?.trim();
+  if (!accountId) {
+    adminElements.transactionTable.innerHTML = '<div class="empty-state">请输入账号ID后查询</div>';
+    return;
+  }
+  adminElements.transactionTable.innerHTML = '<div class="loading">加载中...</div>';
+  try {
+    const response = await fetchAPI(`/api/admin/wallet/transactions?account_id=${encodeURIComponent(accountId)}`);
+    const data = await response.json();
+    adminState.transactions = data.transactions || [];
+    renderTransactions();
+  } catch (error) {
+    console.error("加载交易记录失败", error);
+    adminElements.transactionTable.innerHTML = `<div class="empty-state">${error.message || "交易记录加载失败"}</div>`;
+  }
+}
+
+function renderTransactions() {
+  if (!adminElements.transactionTable) return;
+  const transactions = adminState.transactions;
+  if (!transactions.length) {
+    adminElements.transactionTable.innerHTML = '<div class="empty-state">暂无交易记录</div>';
+    return;
+  }
+  const rows = transactions
+    .map((tx) => `
+      <tr>
+          <td>${tx.id}</td>
+          <td>${(tx.amount_cents / 100).toFixed(2)} ${tx.currency}</td>
+          <td>${tx.type}</td>
+          <td>${tx.description || "-"}</td>
+          <td>${tx.job_id || "-"}</td>
+          <td>${new Date(tx.created_at).toLocaleString("zh-CN")}</td>
+      </tr>
+    `)
+    .join("");
+  adminElements.transactionTable.innerHTML = `
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>金额</th>
+                <th>类型</th>
+                <th>描述</th>
+                <th>关联任务</th>
+                <th>创建时间</th>
+            </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
 function switchTab(tabName) {
   if (tabName === adminState.currentTab) {
     return;
@@ -472,6 +750,18 @@ function switchTab(tabName) {
 
   if (tabName === "admins") {
     loadAdmins();
+  }
+
+  if (tabName === "devices") {
+    loadDevices();
+  }
+
+  if (tabName === "jobs") {
+    loadAdminJobs();
+  }
+
+  if (tabName === "wallet") {
+    loadTopups();
   }
 }
 
@@ -549,6 +839,21 @@ function formatBytes(bytes) {
   const result = value / 1024 ** exponent;
   const formatted = exponent === 0 ? result.toFixed(0) : result.toFixed(1);
   return `${formatted} ${units[exponent]}`;
+}
+
+function buildJobStatusBadge(status) {
+  switch (status) {
+    case "running":
+      return '<span class="badge badge-warning">执行中</span>';
+    case "completed":
+      return '<span class="badge badge-success">已完成</span>';
+    case "partial":
+      return '<span class="badge badge-warning">部分完成</span>';
+    case "failed":
+      return '<span class="badge badge-danger">失败</span>';
+    default:
+      return `<span class="badge">${status || "未知"}</span>`;
+  }
 }
 
 function formatDate(value) {

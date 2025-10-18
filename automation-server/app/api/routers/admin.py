@@ -20,6 +20,9 @@ from app.domain.accounts import (
 )
 from app.domain.devices import DeviceService, DeviceAlreadyExistsError as DeviceCreationError
 from app.domain.commands import CommandService
+from app.domain.script_jobs import ScriptJobService
+from app.domain.wallets import WalletService
+from app.domain.topups import TopupService
 from app.schemas import (
     AccountCreate,
     AccountLoginResponse,
@@ -34,6 +37,13 @@ from app.schemas import (
     CommandResponse,
     DeviceCapabilitiesResponse,
     SuccessResponse,
+    ScriptJobListResponse,
+    ScriptJobResponse,
+    WalletTransactionListResponse,
+    WalletTopupListResponse,
+    WalletTopupReviewRequest,
+    WalletTopupResponse,
+    WalletSnapshotResponse,
 )
 from app.websocket.manager import manager
 
@@ -235,6 +245,116 @@ async def admin_send_command(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="指令发送失败") from exc
 
 
+@router.get("/script-jobs", response_model=ScriptJobListResponse)
+async def admin_list_script_jobs(
+    status_filter: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    _: AccountDomain = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db_session),
+) -> ScriptJobListResponse:
+    service = ScriptJobService.with_session(db)
+    jobs = await service.list_jobs_admin(status=status_filter, limit=limit, offset=offset)
+    responses: list[ScriptJobResponse] = []
+    for job in jobs:
+        targets = await service.get_targets(job.id)
+        responses.append(_job_to_response(job, targets))
+    return ScriptJobListResponse(jobs=responses)
+
+
+@router.get("/script-jobs/{job_id}", response_model=ScriptJobResponse)
+async def admin_get_script_job(
+    job_id: str,
+    _: AccountDomain = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db_session),
+) -> ScriptJobResponse:
+    service = ScriptJobService.with_session(db)
+    job = await service.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+    targets = await service.get_targets(job.id)
+    return _job_to_response(job, targets)
+
+
+@router.get("/wallet/balance", response_model=WalletSnapshotResponse)
+async def admin_wallet_balance(
+    account_id: str,
+    _: AccountDomain = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db_session),
+) -> WalletSnapshotResponse:
+    wallet_service = WalletService.with_session(db)
+    snapshot = await wallet_service.ensure_wallet(account_id)
+    return WalletSnapshotResponse(balance_cents=snapshot.balance_cents, currency=snapshot.currency)
+
+
+@router.get("/wallet/transactions", response_model=WalletTransactionListResponse)
+async def admin_wallet_transactions(
+    account_id: str,
+    limit: int = 50,
+    offset: int = 0,
+    _: AccountDomain = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db_session),
+) -> WalletTransactionListResponse:
+    wallet_service = WalletService.with_session(db)
+    rows = await wallet_service.list_transactions(account_id, limit, offset)
+    transactions = [
+        WalletTransactionResponse(
+            id=row.id,
+            amount_cents=row.amount_cents,
+            currency=row.currency,
+            type=row.type,
+            description=row.description,
+            created_at=row.created_at,
+            job_id=row.job_id,
+        )
+        for row in rows
+    ]
+    return WalletTransactionListResponse(transactions=transactions)
+
+
+@router.get("/wallet/topups", response_model=WalletTopupListResponse)
+async def admin_list_topups(
+    status_filter: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    _: AccountDomain = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db_session),
+) -> WalletTopupListResponse:
+    topup_service = TopupService.with_session(db)
+    orders = await topup_service.list_orders_admin(status=status_filter, limit=limit, offset=offset)
+    return WalletTopupListResponse(orders=[_topup_to_response(order) for order in orders])
+
+
+@router.post("/wallet/topups/{order_id}/review", response_model=WalletTopupResponse)
+async def admin_review_topup(
+    order_id: str,
+    payload: WalletTopupReviewRequest,
+    _: AccountDomain = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db_session),
+) -> WalletTopupResponse:
+    topup_service = TopupService.with_session(db)
+    wallet_service = WalletService.with_session(db)
+
+    order = await topup_service.get_order(order_id)
+    if order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="充值单不存在")
+    if order.status != "pending":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="充值单已经处理")
+
+    if payload.action == "approve":
+        order = await topup_service.mark_success(order_id)
+        await wallet_service.ensure_wallet(order.account_id, order.currency)
+        await wallet_service.credit_amount(
+            account_id=order.account_id,
+            amount_cents=order.amount_cents,
+            currency=order.currency,
+            description="人工审核充值",
+        )
+    else:
+        order = await topup_service.mark_failed(order_id)
+
+    await db.commit()
+    return _topup_to_response(order)
 @router.get("/accounts", response_model=List[AccountResponse])
 async def list_accounts(
     admin: AccountDomain = Depends(get_super_admin),
@@ -267,6 +387,48 @@ async def create_account(
 
     await db.commit()
     return AccountResponse.model_validate(account)
+
+
+def _job_to_response(job: ScriptJob, targets) -> ScriptJobResponse:
+    return ScriptJobResponse(
+        id=job.id,
+        template_id=job.template_id,
+        script_name=job.script_name,
+        script_version=job.script_version,
+        status=job.status,
+        total_targets=job.total_targets,
+        unit_price=job.unit_price,
+        currency=job.currency,
+        total_price=job.total_price,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        targets=[
+            ScriptJobTargetResponse(
+                id=target.id,
+                device_id=target.device_id,
+                command_id=target.command_id,
+                status=target.status,
+                sent_at=target.sent_at,
+                completed_at=target.completed_at,
+                result=target.result,
+                error_message=target.error_message,
+            )
+            for target in targets
+        ],
+    )
+
+
+def _topup_to_response(order) -> WalletTopupResponse:
+    return WalletTopupResponse(
+        id=order.id,
+        amount_cents=order.amount_cents,
+        currency=order.currency,
+        status=order.status,
+        payment_channel=order.payment_channel,
+        reference_no=order.reference_no,
+        created_at=order.created_at,
+        confirmed_at=order.confirmed_at,
+    )
 
 
 @router.get("/stats", response_model=AdminStatsResponse)

@@ -84,6 +84,12 @@
     min-width: 840px;
 }
 
+.jobs-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
 .plain-table {
     width: 100%;
     border-collapse: collapse;

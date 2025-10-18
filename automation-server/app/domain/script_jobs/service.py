@@ -62,6 +62,10 @@ class ScriptJobService:
         models = await self.repository.list_jobs(owner_id, limit, offset)
         return [self._to_job(model) for model in models]
 
+    async def list_jobs_admin(self, status: str | None = None, limit: int = 50, offset: int = 0) -> list[ScriptJob]:
+        models = await self.repository.list_jobs_admin(status=status, limit=limit, offset=offset)
+        return [self._to_job(model) for model in models]
+
     async def get_job(self, job_id: str) -> ScriptJob | None:
         model = await self.repository.get_job(job_id)
         return self._to_job(model) if model else None

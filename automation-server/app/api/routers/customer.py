@@ -37,6 +37,7 @@ from app.schemas import (
     WalletTransactionResponse,
     WalletTopupRequest,
     WalletTopupResponse,
+    WalletTopupListResponse,
     ScriptParameterSpec,
     ScriptTemplateCreate,
     ScriptTemplateDetail,
@@ -86,6 +87,108 @@ async def list_available_scripts(
     return ScriptCapabilityListResponse(
         scripts=[_to_script_capability_info(name, data) for name, data in scripts.items()]
     )
+
+
+@router.get("/wallet", response_model=WalletSnapshotResponse, summary="获取钱包余额")
+async def get_wallet_snapshot(
+    account: AccountDomain = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db_session),
+) -> WalletSnapshotResponse:
+    wallet_service = WalletService.with_session(db)
+    snapshot = await wallet_service.ensure_wallet(account.id)
+    await db.commit()
+    return WalletSnapshotResponse(balance_cents=snapshot.balance_cents, currency=snapshot.currency)
+
+
+@router.get(
+    "/wallet/transactions",
+    response_model=WalletTransactionListResponse,
+    summary="获取钱包交易记录",
+)
+async def list_wallet_transactions(
+    limit: int = 50,
+    offset: int = 0,
+    account: AccountDomain = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db_session),
+) -> WalletTransactionListResponse:
+    wallet_service = WalletService.with_session(db)
+    records = await wallet_service.list_transactions(account.id, limit, offset)
+    transactions = [
+        WalletTransactionResponse(
+            id=record.id,
+            amount_cents=record.amount_cents,
+            currency=record.currency,
+            type=record.type,
+            description=record.description,
+            created_at=record.created_at,
+            job_id=record.job_id,
+        )
+        for record in records
+    ]
+    return WalletTransactionListResponse(transactions=transactions)
+
+
+@router.post(
+    "/wallet/topups",
+    response_model=WalletTopupResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="创建充值订单",
+)
+async def create_wallet_topup(
+    payload: WalletTopupRequest,
+    account: AccountDomain = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db_session),
+) -> WalletTopupResponse:
+    topup_service = TopupService.with_session(db)
+    wallet_service = WalletService.with_session(db)
+    await wallet_service.ensure_wallet(account.id)
+    order = await topup_service.create_order(
+        account_id=account.id,
+        amount_cents=payload.amount_cents,
+        currency="CNY",
+        payment_channel=payload.payment_channel,
+        reference_no=payload.reference_no,
+    )
+    await db.commit()
+    return WalletTopupResponse(
+        id=order.id,
+        amount_cents=order.amount_cents,
+        currency=order.currency,
+        status=order.status,
+        payment_channel=order.payment_channel,
+        reference_no=order.reference_no,
+        created_at=order.created_at,
+        confirmed_at=order.confirmed_at,
+    )
+
+
+@router.get(
+    "/wallet/topups",
+    response_model=WalletTopupListResponse,
+    summary="获取充值订单列表",
+)
+async def list_wallet_topups(
+    status_filter: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    account: AccountDomain = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db_session),
+) -> WalletTopupListResponse:
+    topup_service = TopupService.with_session(db)
+    orders = await topup_service.list_orders(account.id, limit, offset, status_filter)
+    return WalletTopupListResponse(orders=[
+        WalletTopupResponse(
+            id=order.id,
+            amount_cents=order.amount_cents,
+            currency=order.currency,
+            status=order.status,
+            payment_channel=order.payment_channel,
+            reference_no=order.reference_no,
+            created_at=order.created_at,
+            confirmed_at=order.confirmed_at,
+        )
+        for order in orders
+    ])
 
 
 @router.post(
@@ -317,7 +420,6 @@ async def create_script_job(
         db=db,
         job_service=job_service,
         wallet_service=wallet_service,
-        topup_service=topup_service,
         command_service=command_service,
     )
     await db.commit()
@@ -412,7 +514,6 @@ async def retry_script_job(
         db=db,
         job_service=job_service,
         wallet_service=wallet_service,
-        topup_service=topup_service,
         command_service=command_service,
     )
     await db.commit()
@@ -652,7 +753,6 @@ async def _start_job_execution(
     db: AsyncSession,
     job_service: ScriptJobService,
     wallet_service: WalletService,
-    topup_service: TopupService,
     command_service: CommandService,
 ) -> ScriptJobResponse:
     pricing = capability.get("pricing") or {}

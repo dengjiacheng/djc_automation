@@ -61,8 +61,12 @@ class TopupService:
         order = await self.repository.get_order(order_id)
         return self._to_domain(order) if order else None
 
-    async def list_orders(self, account_id: str, limit: int = 20, offset: int = 0) -> list[TopupOrder]:
-        rows = await self.repository.list_orders(account_id, limit, offset)
+    async def list_orders(self, account_id: str, limit: int = 20, offset: int = 0, status: str | None = None) -> list[TopupOrder]:
+        rows = await self.repository.list_orders(account_id, limit, offset, status)
+        return [self._to_domain(row) for row in rows]
+
+    async def list_orders_admin(self, status: str | None = None, limit: int = 20, offset: int = 0) -> list[TopupOrder]:
+        rows = await self.repository.list_orders_all(status=status, limit=limit, offset=offset)
         return [self._to_domain(row) for row in rows]
 
     @staticmethod

@@ -37,6 +37,15 @@ class ScriptJobRepository(Protocol):
     async def list_jobs(self, owner_id: str, limit: int, offset: int) -> Sequence[ScriptJobModel]:
         ...
 
+    async def list_jobs_admin(
+        self,
+        *,
+        status: str | None,
+        limit: int,
+        offset: int,
+    ) -> Sequence[ScriptJobModel]:
+        ...
+
     async def list_targets(self, job_id: str) -> Sequence[ScriptJobTargetModel]:
         ...
 

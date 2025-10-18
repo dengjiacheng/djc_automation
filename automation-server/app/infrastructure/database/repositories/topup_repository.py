@@ -58,13 +58,30 @@ class SqlTopupRepository:
         result = await self.session.execute(stmt)
         return result.scalars().first()
 
-    async def list_orders(self, account_id: str, limit: int, offset: int) -> Sequence[WalletTopupOrder]:
-        stmt = (
-            select(WalletTopupOrder)
-            .where(WalletTopupOrder.account_id == account_id)
-            .order_by(desc(WalletTopupOrder.created_at))
-            .offset(offset)
-            .limit(limit)
-        )
+    async def list_orders(
+        self,
+        account_id: str,
+        limit: int,
+        offset: int,
+        status: str | None = None,
+    ) -> Sequence[WalletTopupOrder]:
+        stmt = select(WalletTopupOrder).where(WalletTopupOrder.account_id == account_id)
+        if status and status != "all":
+            stmt = stmt.where(WalletTopupOrder.status == status)
+        stmt = stmt.order_by(desc(WalletTopupOrder.created_at)).offset(offset).limit(limit)
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
+    async def list_orders_all(
+        self,
+        *,
+        status: str | None,
+        limit: int,
+        offset: int,
+    ) -> Sequence[WalletTopupOrder]:
+        stmt = select(WalletTopupOrder)
+        if status and status != "all":
+            stmt = stmt.where(WalletTopupOrder.status == status)
+        stmt = stmt.order_by(desc(WalletTopupOrder.created_at)).offset(offset).limit(limit)
         result = await self.session.execute(stmt)
         return result.scalars().all()
