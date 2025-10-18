@@ -200,7 +200,124 @@ djc_automation
    - 当前 REST 接口针对单设备。可在业务层循环调用 `admin_send_command`，或扩展一个批量接口（接收设备 ID 列表，逐个写入 `commands` 表并推送，成功 / 失败分别返回）。
    - 建议在推送前校验所有目标设备是否在线，并复用同一个模板，避免每台设备重新填参。
 
-### 3.5 脚本执行栈（Instrumentation）
+### 3.5 WebSocket 消息协议
+
+**握手与生命周期**
+- Instrumentation 首次连线时发送 `session_init`，携带 `device_id`（可选）、设备信息与 `capabilities`。
+- 服务端在 `websocket.py` 校验账号 → 调 `DeviceService.ensure_device_for_connection` 写库 → 回复 `session_ready` 并缓存能力。
+- 管理端经 `/api/admin/commands` 下发 `command`；设备执行过程中可以持续发出 `progress`、`log`，完成后发送 `result`。
+- 服务端持久化 `result` 后会回送 `command_ack`，设备即可从本地重试队列移除该指令，避免重复上报。
+- 客户端每 30 秒发送 `heartbeat`；若超时未收到，服务端将断开连接并标记离线。
+
+**消息类型速查**
+
+| 类型 | 方向 | 关键字段 | 说明 |
+| --- | --- | --- | --- |
+| `session_init` | 设备 → 服务端 | `device_id?`、`device_name`、`capabilities[]` | 建立会话、上报能力 |
+| `session_ready` | 服务端 → 设备 | `device_id` | 会话就绪 / 回写最终设备 ID |
+| `command` | 服务端 → 设备 | `command_id`、`action`、`params`、`user_id`、`device_id` | 指令下发，供设备执行 |
+| `result` | 设备 → 服务端 | `command_id`、`status`、`result`、`error_message`、`user_id`、`device_id`、`action` | 指令执行结果，`status`= `success`/`failed` |
+| `command_ack` | 服务端 → 设备 | `command_id` | 服务端确认已落库，设备清理重试队列 |
+| `progress` | 设备 → 服务端 | `command_id`、`stage`、`message`、`percent?`、`extra?` | 场景阶段进度，服务端写入 `device_logs` |
+| `log` | 设备 → 服务端 | `type`、`message`、`extra?`、`user_id?` | 非结构化日志 |
+| `heartbeat` | 设备 → 服务端 | `battery`、`network_type`、`current_task` | 在线心跳（默认 30s 一次） |
+| `error` | 服务端 → 设备 | `reason` | 协议错误 / 鉴权失败时返回 |
+| `ping` / `pong` | 双向 | —— | OkHttp / FastAPI 心跳帧 |
+
+**示例载荷**
+
+```json
+{
+  "type": "session_init",
+  "data": {
+    "device_id": "cached-dev-id",
+    "device_name": "Pixel 7",
+    "device_model": "panther",
+    "android_version": "14",
+    "local_ip": "192.168.1.23",
+    "capabilities": [
+      {
+        "action": "start_task",
+        "description": "启动脚本任务",
+        "params": [
+          {"name": "task_name", "type": "string", "required": true},
+          {"name": "config", "type": "object", "required": false, "default": {}}
+        ],
+        "meta": {
+          "scripts": [
+            {
+              "name": "dhgate_order_v2",
+              "version": "3.0.4",
+              "parameters": [
+                {"name": "search_keyword", "type": "string", "required": true, "default": "..."},
+                {"name": "product_image", "type": "file", "required": true}
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+```json
+{
+  "type": "command",
+  "data": {
+    "command_id": "cmd-a1b2c3",
+    "device_id": "dev-uuid",
+    "user_id": "admin-uuid",
+    "action": "start_task",
+    "params": {
+      "task_name": "dhgate_order_v2",
+      "config": {"search_keyword": "demo keyword"}
+    }
+  }
+}
+```
+
+```json
+{
+  "type": "result",
+  "data": {
+    "command_id": "cmd-a1b2c3",
+    "status": "success",
+    "result": "{\"metrics\":{\"duration_ms\":5230}}",
+    "error_message": null,
+    "user_id": "admin-uuid",
+    "device_id": "dev-uuid",
+    "action": "start_task"
+  }
+}
+```
+
+```json
+{
+  "type": "progress",
+  "data": {
+    "command_id": "cmd-a1b2c3",
+    "stage": "scene_match",
+    "message": "matched login scene",
+    "percent": 40,
+    "status": "running",
+    "extra": {"scene": "login"},
+    "user_id": "admin-uuid",
+    "device_id": "dev-uuid"
+  }
+}
+```
+
+收到结果后，服务端会向设备发送：
+
+```json
+{
+  "type": "command_ack",
+  "data": {"command_id": "cmd-a1b2c3"}
+}
+```
+
+### 3.6 脚本执行栈（Instrumentation）
 
 - `ScenarioCatalog`：列举/加载脚本元数据，生成能力描述。
 - `ScenarioParameterBinder`：负责校验 `task_name` 与 `config`，合并 `project.yaml` 中的默认值，输出 `ScenarioTaskRequest`。
@@ -263,14 +380,39 @@ djc_automation
 
 ## 5. 维护要点与扩展建议
 
-- **能力与模板缓存**：`ConnectionManager` 只在设备在线时持有能力列表。若需要离线也能查询，应在 `session_init` 时复制一份落库（例如新增 `device_capabilities` 表），并在设备离线时保留最后一次上报。
-- **批量指令**：建议在 `admin.py` 中新增 `/commands/batch`，接收 `device_ids` 数组与统一指令参数，在事务内逐个写入并调用 `manager.send_command`，最后一次失败需要回滚状态并告知调用方。
-- **脚本资源更新**：当需要发布新的脚本或修改参数，更新 `automation-app/src/androidTest/assets/scripts`，重新构建上传即可。由于能力 JSON 来自 APK，服务器无需提前硬编码脚本列表。
-- **OpenCV 版本管理**：`opencv` 子模块是本地复制的 SDK，如需升级，需重新下载官方 AAR 并同步 `native` 库。
-- **日志与排障**：
-  - 服务端日志：FastAPI 日志 + `device_logs` 表。
-  - 设备端日志：`AutomationController` 会使用 `Logcat`，可通过 `adb logcat | grep AutomationController` 检索。
-  - 若脚本参数校验失败，Instrumentation 会返回 `failed`，`error_message` 中包含 `ParameterValidator` 的详细提示。
+### 5.1 能力与模板缓存
+
+`ConnectionManager` 仅在设备在线时持有 `device_capabilities`。若业务需要离线仍可查询脚本参数，建议在 `_process_session_init` 中额外把 `capabilities` 落库（可新建 `device_capabilities` 表，字段包含 `device_id`、`capability_hash`、`payload`、`updated_at`），并在能力发生变更时刷新缓存，供前端直接渲染模板。
+
+### 5.2 批量指令下发
+
+现有 `/api/admin/commands` 面向单设备。可在 `admin.py` 增加 `/commands/batch` 接口，接收 `{device_ids: [...], action, params}`。实现要点：逐台校验在线状态、在事务中循环创建 `Command`、调用 `manager.send_command`，若某台失败需要记录失败原因并回滚对应记录，最终返回成功 / 失败列表给调用方。
+
+### 5.3 脚本扩展流程
+
+1. **编写资源**：在 `automation-app/src/androidTest/assets/scripts/<task_name>/` 新增 `project.yaml`（元数据、参数定义）和 `scenes.yaml`（场景签名、handler 映射），保持缩进与字段命名规范。
+2. **实现处理器**：在 `com.automation.feature.scripts` 下编写脚本处理类（示例 `DhgateOrderV2Handlers`），并在 `ScriptHandlerRegistry` 构造函数中注册。
+3. **接入参数校验**：通过 `project.yaml` 中的 `default`、`type` 信息，结合 `ScenarioParameterBinder` 自动生成校验规则；如需自定义参数处理，可扩展 `ScenarioTaskService` 的逻辑或新增 `CommandDescriptor` 元数据。
+4. **构建与上传**：重新执行 `./gradlew automation-app:assembleDebugAndroidTest` 并使用 `scripts/build_and_upload.py` 上传，新的 `capabilities` 会随 APK 一并上报。
+5. **验证**：在后台调用 `/api/admin/devices/{device_id}/capabilities` 查看脚本是否出现，使用控制台执行一次集成测试，确认 `progress` 与 `result` 行为符合预期。
+
+### 5.4 新指令 / 新能力扩展
+
+1. 在 `automation-app/src/androidTest/java/com/automation/application/runtime/modules/` 新建 `CommandModule`，实现 `register()`，注册新的 `CommandDescriptor` 与 `CommandHandler`。
+2. 将模块实例加入 `CommandExecutionEngine.registerModules()`，必要时为其增加拦截器或上下文依赖。
+3. 使用 `CommandParameter.required/optional` 定义参数列表，借助 `metadataSupplier` 返回额外配置，使服务端 / 前端可渲染表单。
+4. 若服务端需要感知新指令，更新 `automation-server/app/api/routers/commands.py` / `admin.py` 的参数校验或权限逻辑，并确保 `CommandService` 能序列化新字段。
+5. 通过真实设备或 WebSocket 模拟工具回归测试，确认 `command_ack` 能正确返回，且新指令在 Web 控制台展示正常。
+
+### 5.5 原生依赖管理
+
+`opencv` 子模块是 OpenCV Android SDK 的本地镜像。如需升级，应下载官方发行版，替换 `java/` 与 `native/` 目录，更新 `build.gradle` 版本号，然后重新构建 `automation-app` 验证 `ImageRecognition` / `VisionCommandModule` 功能。
+
+### 5.6 日志与排障
+
+- 服务端：FastAPI 默认日志 + `device_logs` 表，结合 `log_type`、`command_id` 可还原脚本执行轨迹。
+- 设备端：主要关注 `AutomationController`、`CommandBus`、`ScenarioTaskService` 日志，可使用 `adb logcat -s AutomationController CommandBus ScenarioTaskService`。
+- 参数错误：若脚本参数缺失或类型不匹配，Instrumentation 会返回 `status=failed` 且在 `error_message` 中附带 `ParameterValidator` 提示，可直接反馈给调用方。
 
 ## 6. 常用路径速查
 
