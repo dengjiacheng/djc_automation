@@ -308,8 +308,8 @@
 
 .parameter-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 12px;
+    grid-template-columns: 1fr;
+    gap: 14px;
 }
 
 .parameter-grid .form-row {
@@ -319,12 +319,28 @@
 }
 
 .parameter-grid .param-label {
+    font-size: 0.9rem;
+    color: var(--color-text);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.parameter-grid .param-label .parameter-type {
     font-size: 0.85rem;
     color: var(--color-text-muted);
+    font-weight: 400;
 }
 
 .parameter-grid .form-control {
     width: 100%;
+}
+
+.parameter-grid .form-control[readonly] {
+    background-color: #f3f4f6;
+    color: var(--color-text-muted);
 }
 
 .parameter-hint {

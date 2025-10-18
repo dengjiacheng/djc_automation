@@ -3,8 +3,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db_session
-from app.domain.devices import DeviceService
+from app.interfaces.http.deps import get_db_session
+from app.modules.devices import DeviceService
 from app.schemas import DeviceListResponse, DeviceResponse
 
 router = APIRouter()

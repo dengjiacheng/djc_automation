@@ -9,9 +9,9 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Account as AccountModel
-from app.domain.accounts.models import Account
-from app.domain.accounts.exceptions import AccountNotFoundError
-from app.domain.accounts.repository import AccountRepository
+from app.modules.accounts.models import Account
+from app.modules.accounts.exceptions import AccountNotFoundError
+from app.modules.accounts.repository import AccountRepository
 
 
 class SqlAccountRepository(AccountRepository):

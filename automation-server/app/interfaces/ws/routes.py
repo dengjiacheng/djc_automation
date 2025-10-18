@@ -8,15 +8,15 @@ from typing import Any, Literal, Optional
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db_session
+from app.interfaces.http.deps import get_db_session
 from app.core.security import decode_access_token
-from app.domain.commands import CommandService
-from app.domain.wallets import WalletService
-from app.domain.devices import DeviceService, DeviceOwnershipError
-from app.domain.logs import LogService
-from app.domain.script_jobs import ScriptJobService
+from app.modules.commands import CommandService
+from app.modules.wallets import WalletService
+from app.modules.devices import DeviceService, DeviceOwnershipError
+from app.modules.logs import LogService
+from app.modules.script_jobs import ScriptJobService
 from app.schemas import CommandResultUpdate, WSMessage
-from app.websocket.manager import manager
+from app.interfaces.ws.manager import manager
 
 logger = logging.getLogger(__name__)
 
@@ -89,15 +89,16 @@ async def device_socket(websocket: WebSocket, token: str = Query(...), db: Async
         session = DeviceSession(websocket=websocket, username=username)
         while True:
             message = await websocket.receive_text()
-        await _handle_device_message(
-            session=session,
-            raw=message,
-            device_service=device_service,
-            command_service=command_service,
-            log_service=log_service,
-            wallet_service=wallet_service,
-            db=db,
-        )
+            await _handle_device_message(
+                session=session,
+                raw=message,
+                device_service=device_service,
+                command_service=command_service,
+                job_service=job_service,
+                log_service=log_service,
+                wallet_service=wallet_service,
+                db=db,
+            )
     except WebSocketDisconnect:
         logger.info("Device %s disconnected", session.device_id if session and session.device_id else "unknown")
     except Exception as exc:  # pylint: disable=broad-except
@@ -126,6 +127,7 @@ async def _handle_device_message(
     raw: str,
     device_service: DeviceService,
     command_service: CommandService,
+    job_service: ScriptJobService,
     log_service: LogService,
     wallet_service: WalletService,
     db: AsyncSession,

@@ -8,8 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app import __version__
-from app.api import create_api_router
-from app.api.routers import websocket as websocket_router
+from app.interfaces.http import create_api_router
+from app.interfaces.ws import router as websocket_router
 from app.core.config import get_settings
 from app.db.session import init_db
 
@@ -58,7 +58,7 @@ def create_app() -> FastAPI:
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     app.include_router(create_api_router(settings.api_prefix))
-    app.include_router(websocket_router.router)
+    app.include_router(websocket_router)
 
     @app.get("/", response_class=HTMLResponse)
     async def homepage(request: Request):

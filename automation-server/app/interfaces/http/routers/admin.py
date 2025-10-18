@@ -1,15 +1,15 @@
 """Administrative endpoints for managing accounts and devices."""
 from datetime import datetime
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db_session
+from app.interfaces.http.deps import get_db_session
 from app.core.security import create_access_token, get_current_admin, get_super_admin
 from app.db.models import Device, Command
-from app.domain.accounts import (
+from app.modules.accounts import (
     Account as AccountDomain,
     AccountAlreadyExistsError,
     AccountCreateInput,
@@ -18,11 +18,11 @@ from app.domain.accounts import (
     AccountUpdateInput,
     UNSET,
 )
-from app.domain.devices import DeviceService, DeviceAlreadyExistsError as DeviceCreationError
-from app.domain.commands import CommandService
-from app.domain.script_jobs import ScriptJobService
-from app.domain.wallets import WalletService
-from app.domain.topups import TopupService
+from app.modules.devices import DeviceService, DeviceAlreadyExistsError as DeviceCreationError
+from app.modules.commands import CommandService
+from app.modules.script_jobs import ScriptJob, ScriptJobService, ScriptJobTarget
+from app.modules.wallets import WalletService
+from app.modules.topups import TopupService
 from app.schemas import (
     AccountCreate,
     AccountLoginResponse,
@@ -40,12 +40,13 @@ from app.schemas import (
     ScriptJobListResponse,
     ScriptJobResponse,
     WalletTransactionListResponse,
+    WalletTransactionResponse,
     WalletTopupListResponse,
     WalletTopupReviewRequest,
     WalletTopupResponse,
     WalletSnapshotResponse,
 )
-from app.websocket.manager import manager
+from app.interfaces.ws.manager import manager
 
 router = APIRouter()
 
@@ -202,18 +203,11 @@ async def admin_send_command(
             user_id=admin.id,
         )
         sent_at = datetime.utcnow()
-        response_payload = CommandResponse(
-            command_id=command.id,
-            device_id=device_id,
+        response_payload = command.to_response(
             user_id=admin.id,
-            action=command.action,
             params=payload.params,
-            status="sent",
-            result=None,
-            error_message=None,
-            created_at=command.created_at,
+            status_override="sent",
             sent_at=sent_at,
-            completed_at=None,
         )
         success = await manager.send_command(device_id, response_payload)
         if not success:
@@ -224,19 +218,7 @@ async def admin_send_command(
         await db.commit()
 
         if updated_command:
-            response_payload = CommandResponse(
-                command_id=updated_command.id,
-                device_id=updated_command.device_id,
-                user_id=updated_command.user_id,
-                action=updated_command.action,
-                params=updated_command.params,
-                status=updated_command.status,
-                result=updated_command.result,
-                error_message=updated_command.error_message,
-                created_at=updated_command.created_at,
-                sent_at=updated_command.sent_at,
-                completed_at=updated_command.completed_at,
-            )
+            response_payload = updated_command.to_response()
         return response_payload
     except HTTPException:
         raise
@@ -389,7 +371,7 @@ async def create_account(
     return AccountResponse.model_validate(account)
 
 
-def _job_to_response(job: ScriptJob, targets) -> ScriptJobResponse:
+def _job_to_response(job: ScriptJob, targets: Iterable[ScriptJobTarget]) -> ScriptJobResponse:
     return ScriptJobResponse(
         id=job.id,
         template_id=job.template_id,

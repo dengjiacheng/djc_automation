@@ -46,3 +46,28 @@ class Command:
             sent_at=instance.sent_at,
             completed_at=instance.completed_at,
         )
+
+    def to_response(
+        self,
+        *,
+        user_id: Optional[str] = None,
+        params: Optional[dict[str, Any]] = None,
+        status_override: Optional[str] = None,
+        sent_at: Optional[datetime] = None,
+    ):
+        """Convert current command to the public API schema."""
+        from app.schemas import CommandResponse  # lazy import to avoid cycle
+
+        return CommandResponse(
+            command_id=self.id,
+            device_id=self.device_id,
+            user_id=user_id if user_id is not None else self.user_id,
+            action=self.action,
+            params=params if params is not None else self.params,
+            status=status_override or self.status,
+            result=self.result,
+            error_message=self.error_message,
+            created_at=self.created_at,
+            sent_at=sent_at or self.sent_at,
+            completed_at=self.completed_at,
+        )

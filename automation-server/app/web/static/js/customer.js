@@ -8,6 +8,7 @@ const customerState = {
   selectedScript: null,
   templates: [],
   currentFormParameters: [],
+  currentScriptName: null,
   editingTemplate: null,
   scriptMap: {},
   jobs: [],
@@ -186,6 +187,14 @@ async function loadProfile() {
   if (customerElements.info) {
     customerElements.info.textContent = `欢迎, ${profile.username}`;
   }
+  const labLink = document.getElementById("scriptLabLink");
+  if (labLink) {
+    if (profile.role === "admin" || profile.role === "super_admin") {
+      labLink.hidden = false;
+    } else {
+      labLink.hidden = true;
+    }
+  }
 }
 
 async function loadScripts() {
@@ -262,7 +271,7 @@ function renderScriptDetail(script) {
     ? parameters
         .map((param) => `
             <tr>
-                <td>${escapeHtml(param.name)}${param.required ? " <span class=\\"badge badge-warning\\">必填</span>" : ""}</td>
+                <td>${escapeHtml(param.name)}${param.required ? " <span class=\"badge badge-warning\">必填</span>" : ""}</td>
                 <td>${escapeHtml(param.type || "string")}</td>
                 <td>${param.default !== undefined && param.default !== null ? escapeHtml(formatDisplayValue(param.default)) : "-"}</td>
                 <td>${param.description ? escapeHtml(param.description) : "-"}</td>
@@ -514,8 +523,12 @@ function renderJobTable() {
       const successCount = job.targets.filter((target) => target.status === "success").length;
       const failCount = job.targets.filter((target) => target.status === "failed").length;
       const statusBadge = buildJobStatusBadge(job.status);
+      const templateLabel = job.template_title
+        ? escapeHtml(job.template_title)
+        : `<span class="muted">未命名</span>`;
       return `
         <tr data-job-id="${escapeHtml(job.id)}">
+            <td>${templateLabel}</td>
             <td>${escapeHtml(job.script_name)}</td>
             <td>${escapeHtml(job.script_version || "-")}</td>
             <td>${job.total_targets}</td>
@@ -532,6 +545,7 @@ function renderJobTable() {
     <table>
         <thead>
             <tr>
+                <th>模板</th>
                 <th>脚本</th>
                 <th>版本</th>
                 <th>目标设备</th>
@@ -555,9 +569,10 @@ function renderJobTable() {
 }
 
 function openTemplateForm(mode, script, template = null) {
-  if (!customerElements.templateFormModal) return;
+  if (!customerElements.templateFormModal || !script) return;
   customerElements.templateFormMode.value = mode;
   customerState.currentFormParameters = script.parameters || [];
+  customerState.currentScriptName = script.script_name;
   customerState.editingTemplate = template;
   customerElements.templateFormMessage.textContent = "";
   customerElements.templateFormSubmitBtn.disabled = false;
@@ -567,11 +582,11 @@ function openTemplateForm(mode, script, template = null) {
   customerElements.templateNotes.value = template?.notes || "";
   customerElements.templateFormTitle.textContent = mode === "create" ? "创建模板" : "编辑模板";
   customerElements.templateFormSubmitBtn.textContent = mode === "create" ? "保存模板" : "保存修改";
-  populateParameterInputs(script.parameters || [], template?.config || {});
+  populateParameterInputs(script.parameters || [], template?.config || {}, script.script_name);
   openModal(customerElements.templateFormModal);
 }
 
-function populateParameterInputs(parameters, existingConfig) {
+function populateParameterInputs(parameters, existingConfig, scriptName) {
   if (!customerElements.templateParameters) return;
   if (!parameters.length) {
     customerElements.templateParameters.innerHTML = '<p class="muted">脚本未声明参数。</p>';
@@ -579,28 +594,40 @@ function populateParameterInputs(parameters, existingConfig) {
   }
   const items = parameters
     .map((param) => {
+      const paramLabel = escapeHtml(param.name);
+      const paramAttr = param.name.replace(/"/g, "&quot;");
       const inputId = `param-${param.name.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
-      const isObjectLike = ["object", "array"].includes((param.type || "").toLowerCase());
-      const value = getValueByPath(existingConfig, param.name);
-      const displayValue = formatInputValue(value !== undefined ? value : param.default, param.type);
+      const typeHint = (param.type || "").toLowerCase();
+      const isObjectLike = ["object", "array"].includes(typeHint);
+      const isTaskName = param.name === "task_name";
+      const existingValue = getValueByPath(existingConfig, param.name);
+      const effectiveValue =
+        isTaskName && scriptName ? scriptName : existingValue !== undefined ? existingValue : param.default;
+      const displayValue = formatInputValue(effectiveValue, param.type);
       const requiredBadge = param.required ? '<span class="badge badge-warning">必填</span>' : "";
-      const hintParts = [];
-      if (param.description) hintParts.push(escapeHtml(param.description));
-      if (param.type) hintParts.push(`类型: ${escapeHtml(param.type)}`);
-      const hint = hintParts.join(" · ");
+      const typeMeta = param.type ? `<span class="parameter-type"> · 类型: ${escapeHtml(param.type)}</span>` : "";
+      const defaultDisplay =
+        param.default !== undefined && param.default !== null
+          ? escapeHtml(formatDisplayValue(param.default))
+          : "未设置";
+      const descriptionLine = param.description ? `<span class="parameter-hint">${escapeHtml(param.description)}</span>` : "";
+      const readonlyHint = isTaskName
+        ? '<span class="parameter-hint">该字段由系统自动填写，需与脚本能力保持一致。</span>'
+        : "";
+      const readOnlyAttr = isTaskName ? " readonly" : "";
       const escapedValue = escapeHtml(displayValue);
       const inputField = isObjectLike
-        ? `<textarea class="form-control" rows="3" id="${inputId}" data-param-name="${escapeHtml(param.name)}">${escapedValue}</textarea>`
-        : `<input class="form-control" type="text" id="${inputId}" data-param-name="${escapeHtml(param.name)}" value="${escapedValue}">`;
-      const defaultInfo = param.default !== undefined && param.default !== null
-        ? `<span class="parameter-hint">默认值: ${escapeHtml(formatDisplayValue(param.default))}</span>`
-        : "";
-      const infoLine = [hint, defaultInfo].filter(Boolean).join("<br>");
+        ? `<textarea class="form-control"${readOnlyAttr} rows="3" id="${inputId}" data-param-name="${paramAttr}">${escapedValue}</textarea>`
+        : `<input class="form-control"${readOnlyAttr} type="text" id="${inputId}" data-param-name="${paramAttr}" value="${escapedValue}">`;
       return `
         <div class="form-row" data-parameter>
-            <label for="${inputId}">${escapeHtml(param.name)} ${requiredBadge}</label>
+            <label class="param-label" for="${inputId}">
+                ${paramLabel} ${requiredBadge}${typeMeta}
+            </label>
             ${inputField}
-            ${infoLine ? `<span class="parameter-hint">${infoLine}</span>` : ""}
+            <span class="parameter-hint">默认值: ${defaultDisplay}</span>
+            ${descriptionLine}
+            ${readonlyHint}
         </div>
       `;
     })
@@ -624,6 +651,7 @@ function closeModal(modal) {
     }
     customerState.currentFormParameters = [];
     customerState.editingTemplate = null;
+    customerState.currentScriptName = null;
   }
   if (modal === customerElements.templateInfoModal) {
     customerElements.templateInfoBody.innerHTML = "";
@@ -647,6 +675,19 @@ function buildConfigFromForm(parameters) {
     const field = customerElements.templateParameters?.querySelector(
       `[data-param-name="${CSS.escape(param.name)}"]`
     );
+    if (param.name === "task_name") {
+      const fallbackDefault = param.default !== undefined && param.default !== null ? param.default : "";
+      const fieldValue = field ? field.value.trim() : "";
+      const enforcedValue = customerState.currentScriptName || fieldValue || fallbackDefault;
+      if (!enforcedValue) {
+        if (param.required) {
+          missing.push(param.name);
+        }
+        return;
+      }
+      assignPath(config, param.name, enforcedValue);
+      return;
+    }
     if (!field) return;
     const rawValue = field.value.trim();
     if (!rawValue) {
@@ -806,6 +847,7 @@ async function submitTemplateForm(event) {
       });
     } else if (mode === "edit" && customerState.editingTemplate) {
       const payload = {
+        script_title: title || undefined,
         config,
         notes: notes || undefined,
       };
@@ -895,12 +937,17 @@ async function openJobDetail(jobId) {
   const job = await requestJson(`/api/customer/script-jobs/${jobId}`);
   customerState.currentJobDetail = job;
   customerElements.templateInfoTitle.textContent = `任务 ${job.id.slice(0, 8)}...`;
+  const templateDisplay = job.template_title
+    ? `${escapeHtml(job.template_title)} <span class="muted">(ID: ${escapeHtml(job.template_id)})</span>`
+    : escapeHtml(job.template_id);
   const targetsRows = job.targets
     .map((target) => {
       const statusBadge = buildJobStatusBadge(target.status);
       const completedAt = target.completed_at ? new Date(target.completed_at).toLocaleString("zh-CN") : "-";
+      const deviceName = target.device_name ? escapeHtml(target.device_name) : '<span class="muted">未命名</span>';
       return `
         <tr>
+            <td>${deviceName}</td>
             <td>${escapeHtml(target.device_id)}</td>
             <td>${statusBadge}</td>
             <td>${escapeHtml(target.command_id || "-")}</td>
@@ -914,7 +961,7 @@ async function openJobDetail(jobId) {
   customerElements.templateInfoBody.innerHTML = `
     <section>
         <h4>任务概览</h4>
-        <p class="muted">脚本：${escapeHtml(job.script_name)} · 模板：${escapeHtml(job.template_id)}</p>
+        <p class="muted">脚本：${escapeHtml(job.script_name)} · 模板：${templateDisplay}</p>
         <p class="muted">状态：${buildJobStatusBadge(job.status)} · 总费用：${totalPrice}</p>
         <p class="muted">创建时间：${job.created_at ? new Date(job.created_at).toLocaleString("zh-CN") : "-"}</p>
     </section>
@@ -926,7 +973,8 @@ async function openJobDetail(jobId) {
         <table class="parameter-table">
             <thead>
                 <tr>
-                    <th>设备</th>
+                    <th>设备名称</th>
+                    <th>设备ID</th>
                     <th>状态</th>
                     <th>指令ID</th>
                     <th>完成时间</th>

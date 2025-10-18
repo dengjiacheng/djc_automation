@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.db.session import get_db, init_db
 from app.db.models import Account
-from app.domain.accounts import AccountCreateInput, AccountService
+from app.modules.accounts import AccountCreateInput, AccountService
 
 
 async def create_default_admin():

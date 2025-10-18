@@ -7,6 +7,8 @@ from typing import Dict, Optional
 
 from fastapi import WebSocket
 
+from app.schemas import CommandResponse
+
 logger = logging.getLogger(__name__)
 
 
@@ -52,10 +54,11 @@ class ConnectionManager:
             await self.disconnect(device_id)
             return False
 
-    async def send_command(self, device_id: str, command) -> bool:
+    async def send_command(self, device_id: str, command: CommandResponse) -> bool:
+        payload = command.model_dump(mode="json")
         return await self.send_message(
             device_id,
-            {"type": "command", "data": command.model_dump(mode="json")},
+            {"type": "command", "data": payload},
         )
 
     async def broadcast(self, message: dict, exclude: Optional[str] = None) -> None:
@@ -117,6 +120,5 @@ class ConnectionManager:
             logger.error("向 Web 用户 %s 发送消息失败: %s", user_id, exc)
             await self.disconnect_web(user_id)
             return False
-
 
 manager = ConnectionManager()

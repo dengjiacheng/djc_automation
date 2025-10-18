@@ -10,16 +10,16 @@ from typing import Any, Iterable
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db_session
+from app.interfaces.http.deps import get_db_session
 from app.core.security import get_current_account
-from app.domain.accounts import Account as AccountDomain
-from app.domain.devices import DeviceService
-from app.domain.templates import ScriptTemplateService
-from app.domain.script_jobs import ScriptJobService
-from app.domain.script_jobs.models import ScriptJob, ScriptJobTarget
-from app.domain.wallets import WalletService
-from app.domain.topups import TopupService
-from app.domain.commands import CommandService
+from app.modules.accounts import Account as AccountDomain
+from app.modules.devices import DeviceService
+from app.modules.templates import ScriptTemplateService
+from app.modules.script_jobs import ScriptJobService
+from app.modules.script_jobs.models import ScriptJob, ScriptJobTarget
+from app.modules.wallets import WalletService
+from app.modules.topups import TopupService
+from app.modules.commands import CommandService
 from app.schemas import (
     AccountResponse,
     DeviceListResponse,
@@ -45,7 +45,7 @@ from app.schemas import (
     ScriptTemplateSummary,
     ScriptTemplateUpdate,
 )
-from app.websocket.manager import manager
+from app.interfaces.ws.manager import manager
 
 router = APIRouter()
 
@@ -215,6 +215,9 @@ async def create_script_template(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    # task_name 必须与脚本名称保持一致，忽略前端传入的值
+    normalized_config["task_name"] = payload.script_name
+
     service = ScriptTemplateService.with_session(db)
     template = await service.create_template(
         owner_id=account.id,
@@ -298,11 +301,14 @@ async def update_script_template(
             _deep_merge(updated_config, partial_update)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    # 保证 task_name 始终与脚本名称一致
+    updated_config["task_name"] = template.script_name
 
     updated = await service.update_template(
         template_id,
         defaults=updated_config if payload.config is not None else None,
         notes=payload.notes,
+        script_title=payload.script_title,
     )
     await db.commit()
     if updated is None:
@@ -436,11 +442,33 @@ async def list_script_jobs(
     db: AsyncSession = Depends(get_db_session),
 ) -> ScriptJobListResponse:
     job_service = ScriptJobService.with_session(db)
+    template_service = ScriptTemplateService.with_session(db)
+    device_service = DeviceService.with_session(db)
+
     jobs = await job_service.list_jobs(account.id)
+    templates = await template_service.list_templates(account.id)
+    template_map = {template.id: template for template in templates}
+    device_summary = await device_service.list_devices_by_username(account.username)
+    device_map = {
+        device.id: (device.device_name or device.device_id)
+        for device in device_summary.devices
+    }
+
     responses: list[ScriptJobResponse] = []
     for job in jobs:
         targets = await job_service.get_targets(job.id)
-        responses.append(_to_job_response(job, targets))
+        template = template_map.get(job.template_id)
+        template_title = None
+        if template is not None:
+            template_title = template.script_title or template.script_name
+        responses.append(
+            _to_job_response(
+                job,
+                targets,
+                template_title=template_title,
+                device_map=device_map,
+            )
+        )
     return ScriptJobListResponse(jobs=responses)
 
 
@@ -459,7 +487,18 @@ async def get_script_job(
     if job is None or job.owner_id != account.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     targets = await job_service.get_targets(job.id)
-    return _to_job_response(job, targets)
+    template_service = ScriptTemplateService.with_session(db)
+    template = await template_service.get_template(job.template_id)
+    device_service = DeviceService.with_session(db)
+    device_summary = await device_service.list_devices_by_username(account.username)
+    device_map = {
+        device.id: (device.device_name or device.device_id)
+        for device in device_summary.devices
+    }
+    template_title = None
+    if template is not None:
+        template_title = template.script_title or template.script_name
+    return _to_job_response(job, targets, template_title=template_title, device_map=device_map)
 
 
 @router.post(
@@ -715,10 +754,18 @@ def _to_template_detail_response(template, compatibility: str) -> ScriptTemplate
     )
 
 
-def _to_job_response(job: ScriptJob, targets: list[ScriptJobTarget]) -> ScriptJobResponse:
+def _to_job_response(
+    job: ScriptJob,
+    targets: list[ScriptJobTarget],
+    *,
+    template_title: str | None = None,
+    device_map: dict[str, str] | None = None,
+) -> ScriptJobResponse:
+    device_map = device_map or {}
     return ScriptJobResponse(
         id=job.id,
         template_id=job.template_id,
+        template_title=template_title,
         script_name=job.script_name,
         script_version=job.script_version,
         status=job.status,
@@ -732,6 +779,7 @@ def _to_job_response(job: ScriptJob, targets: list[ScriptJobTarget]) -> ScriptJo
             ScriptJobTargetResponse(
                 id=target.id,
                 device_id=target.device_id,
+                device_name=device_map.get(target.device_id),
                 command_id=target.command_id,
                 status=target.status,
                 sent_at=target.sent_at,
@@ -782,7 +830,13 @@ async def _start_job_execution(
             params=params,
             user_id=account.id,
         )
-        sent = await manager.send_command(device.id, command)
+        command_payload = command.to_response(
+            user_id=account.id,
+            params=params,
+            status_override="sent",
+            sent_at=now,
+        )
+        sent = await manager.send_command(device.id, command_payload)
         status_flag = "sent" if sent else "failed"
         sent_at = now if sent else None
         if sent:
@@ -837,7 +891,17 @@ async def _start_job_execution(
 
     persisted_job = await job_service.get_job(job.id)
     persisted_targets = await job_service.get_targets(job.id)
-    return _to_job_response(persisted_job or job, persisted_targets or targets)
+    device_map = {
+        device.id: (device.device_name or device.device_id)
+        for device in devices
+    }
+    template_title = template.script_title or template.script_name
+    return _to_job_response(
+        persisted_job or job,
+        persisted_targets or targets,
+        template_title=template_title,
+        device_map=device_map,
+    )
 
 
 def _extract_unit_price(pricing: dict[str, Any] | None) -> int | None:

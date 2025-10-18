@@ -65,6 +65,7 @@ class ScriptTemplateService:
         schema: Optional[dict[str, Any]] = None,
         schema_hash: Optional[str] = None,
         script_version: Optional[str] = None,
+        script_title: Optional[str] = None,
     ) -> ScriptTemplate | None:
         model = await self.repository.update_template(
             template_id,
@@ -74,6 +75,7 @@ class ScriptTemplateService:
             schema=json.dumps(schema, ensure_ascii=False, sort_keys=True) if schema is not None else None,
             schema_hash=schema_hash,
             script_version=script_version,
+            script_title=script_title,
         )
         return self._to_domain(model) if model else None
 

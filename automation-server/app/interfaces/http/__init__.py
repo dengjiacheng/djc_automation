@@ -1,9 +1,10 @@
 from fastapi import APIRouter
 
-from app.api.routers import admin, apk, auth, commands, customer, devices, websocket
+from app.interfaces.http.routers import admin, apk, auth, commands, customer, devices
 
 
 def create_api_router(prefix: str = "") -> APIRouter:
+    """构建 HTTP API 总路由。"""
     router = APIRouter(prefix=prefix)
     router.include_router(auth.router, prefix="/auth", tags=["认证"])
     router.include_router(devices.router, prefix="/devices", tags=["设备"])

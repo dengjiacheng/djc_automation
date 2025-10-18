@@ -3,7 +3,7 @@
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.accounts.service import AccountService
+from app.modules.accounts.service import AccountService
 from app.infrastructure.database.repositories.account_repository import SqlAccountRepository
 
 from .database import get_db_session

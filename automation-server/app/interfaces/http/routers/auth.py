@@ -1,11 +1,11 @@
 """Authentication endpoints used by devices and web clients."""
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.api.deps import get_account_service
+from app.interfaces.http.deps import get_account_service
 from app.core.config import get_settings
 from app.core.security import create_access_token
 from app.db.models import generate_uuid
-from app.domain.accounts import (
+from app.modules.accounts import (
     AccountAlreadyExistsError,
     AccountCreateInput,
     AccountService,

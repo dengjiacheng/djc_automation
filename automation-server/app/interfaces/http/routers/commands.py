@@ -3,10 +3,10 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from app.core.security import get_current_account
-from app.domain.accounts import Account as AccountDomain
+from app.modules.accounts import Account as AccountDomain
 from app.db.models import generate_uuid
 from app.schemas import CommandCreate, CommandResponse
-from app.websocket.manager import manager
+from app.interfaces.ws.manager import manager
 
 router = APIRouter()
 

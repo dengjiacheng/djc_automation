@@ -4,7 +4,7 @@
 """
 import asyncio
 from app.db.session import get_db, init_db
-from app.domain.accounts import AccountCreateInput, AccountService
+from app.modules.accounts import AccountCreateInput, AccountService
 
 
 async def create_default_account():

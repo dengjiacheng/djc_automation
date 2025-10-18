@@ -66,6 +66,7 @@ class SqlScriptTemplateRepository:
         schema: Optional[str] = None,
         schema_hash: Optional[str] = None,
         script_version: Optional[str] = None,
+        script_title: Optional[str] = None,
     ) -> ScriptTemplate | None:
         values: dict[str, str] = {}
         if defaults is not None:
@@ -80,6 +81,8 @@ class SqlScriptTemplateRepository:
             values["schema_hash"] = schema_hash
         if script_version is not None:
             values["script_version"] = script_version
+        if script_title is not None:
+            values["script_title"] = script_title
         if not values:
             template = await self.get_by_id(template_id)
             return template

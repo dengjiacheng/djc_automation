@@ -243,6 +243,7 @@ class ScriptTemplateCreate(BaseModel):
 
 
 class ScriptTemplateUpdate(BaseModel):
+    script_title: Optional[str] = None
     config: Optional[dict[str, Any]] = None
     notes: Optional[str] = None
 
@@ -285,6 +286,7 @@ class ScriptDeviceListResponse(BaseModel):
 class ScriptJobTargetResponse(BaseModel):
     id: str
     device_id: str
+    device_name: Optional[str] = None
     command_id: Optional[str] = None
     status: str
     sent_at: Optional[datetime] = None
@@ -296,6 +298,7 @@ class ScriptJobTargetResponse(BaseModel):
 class ScriptJobResponse(BaseModel):
     id: str
     template_id: str
+    template_title: Optional[str] = None
     script_name: str
     script_version: Optional[str] = None
     status: str

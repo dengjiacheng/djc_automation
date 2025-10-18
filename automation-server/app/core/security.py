@@ -8,9 +8,9 @@ from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.domain.accounts import Account as AccountDomain
-from app.domain.accounts.service import AccountService
-from app.api.deps import get_db_session
+from app.modules.accounts import Account as AccountDomain
+from app.modules.accounts.service import AccountService
+from app.interfaces.http.deps import get_db_session
 from app.schemas import TokenData
 
 settings = get_settings()
