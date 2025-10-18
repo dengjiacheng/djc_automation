@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# Android Automation Server - One-click deployment
+# Android Automation Server - One-click deployment (root script)
 
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd)
-PROJECT_ROOT="$SCRIPT_DIR"
+PROJECT_ROOT=${PROJECT_ROOT:-"$SCRIPT_DIR/automation-server"}
 CONFIG_FILE=${CONFIG_FILE:-"$PROJECT_ROOT/deploy.env"}
 
 log() { printf '\033[0;32m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "$1"; }
 warn() { printf '\033[0;33m[WARN]\033[0m %s\n' "$1"; }
 fail() { printf '\033[0;31m[ERR ] %s\033[0m\n' "$1" >&2; exit 1; }
+
+if [[ ! -d "$PROJECT_ROOT" ]]; then
+  fail "automation-server 目录不存在：$PROJECT_ROOT"
+fi
 
 create_example() {
   local sample_file="$PROJECT_ROOT/deploy.env.example"
