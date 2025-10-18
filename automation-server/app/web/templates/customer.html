@@ -9,32 +9,125 @@
 {% block body %}
 <div class="app-shell customer-shell">
     <header class="topbar">
-        <div class="container">
+        <div class="container-wide">
             <div class="topbar-brand">
                 <span class="brand-dot"></span>
                 Android 自动化控制系统
             </div>
             <div class="topbar-meta">
                 <span class="avatar-chip" id="customerInfo">加载中...</span>
+                <a class="btn btn--outline" href="/script-lab" target="_blank">脚本开发实验室</a>
                 <button class="btn btn--danger" id="customerLogoutBtn">退出登录</button>
             </div>
         </div>
     </header>
     <main class="app-main">
-        <div class="container">
-            <section class="card table-card">
-                <header class="card-toolbar">
-                    <div>
-                        <h2 class="section-title">我的设备</h2>
-                        <p class="section-subtitle">展示当前账户关联的设备信息，暂不支持远程控制</p>
-                    </div>
-                </header>
-                <div class="table-responsive" id="customerDeviceTable">
-                    <div class="loading">加载中...</div>
+        <div class="container-wide stack-lg">
+            <nav class="tabs" id="customerTabs">
+                <button class="tab active" data-tab="scripts">脚本中心</button>
+                <button class="tab" data-tab="templates">模板管理</button>
+                <button class="tab" data-tab="devices">我的设备</button>
+            </nav>
+
+            <section class="tab-content active" id="scriptsContent">
+                <div class="scripts-layout">
+                    <aside class="pane pane--left">
+                        <header class="pane-header">
+                            <h2>可用脚本</h2>
+                            <button class="btn btn--ghost btn--sm" id="refreshScriptsBtn">刷新</button>
+                        </header>
+                        <div class="script-list" id="scriptList">
+                            <div class="empty-state">暂无在线设备上报脚本能力</div>
+                        </div>
+                    </aside>
+                    <section class="pane pane--center" id="scriptDetail">
+                        <div class="empty-state">请选择左侧脚本以查看详情</div>
+                    </section>
                 </div>
+            </section>
+
+            <section class="tab-content" id="templatesContent">
+                <section class="card table-card">
+                    <header class="card-toolbar">
+                        <div>
+                            <h2 class="section-title">脚本模板</h2>
+                            <p class="section-subtitle">客户自定义的脚本参数集合，可用于批量执行</p>
+                        </div>
+                        <button class="btn btn--ghost" id="refreshTemplatesBtn">刷新</button>
+                    </header>
+                    <div class="table-responsive" id="templateTable">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </section>
+            </section>
+
+            <section class="tab-content" id="devicesContent">
+                <section class="card table-card">
+                    <header class="card-toolbar">
+                        <div>
+                            <h2 class="section-title">我的设备</h2>
+                            <p class="section-subtitle">展示当前账户关联的设备信息</p>
+                        </div>
+                    </header>
+                    <div class="table-responsive" id="customerDeviceTable">
+                        <div class="loading">加载中...</div>
+                    </div>
+                </section>
             </section>
         </div>
     </main>
+</div>
+
+<div class="modal" id="templateFormModal" aria-hidden="true">
+    <div class="modal-dialog">
+        <header class="modal-header">
+            <h3 id="templateFormTitle">创建模板</h3>
+            <button class="modal-close" type="button" data-close-modal>&times;</button>
+        </header>
+        <form id="templateForm" class="modal-body">
+            <input type="hidden" id="templateFormMode" value="create">
+            <div class="form-row">
+                <label for="templateScriptName">脚本</label>
+                <input id="templateScriptName" name="script_name" type="text" class="form-control" readonly>
+            </div>
+            <div class="form-row">
+                <label for="templateScriptVersion">脚本版本</label>
+                <input id="templateScriptVersion" name="script_version" type="text" class="form-control" readonly>
+            </div>
+            <div class="form-row">
+                <label for="templateTitle">模板名称</label>
+                <input id="templateTitle" name="script_title" type="text" class="form-control" placeholder="例如：DHgate下单-默认配置">
+            </div>
+            <div class="form-row">
+                <label for="templateNotes">备注</label>
+                <textarea id="templateNotes" name="notes" class="form-control" rows="2" placeholder="模板说明（可选）"></textarea>
+            </div>
+            <div class="form-divider">参数设置</div>
+            <div id="templateParameters" class="parameter-grid">
+                <p class="muted">脚本未提供参数。</p>
+            </div>
+            <div class="modal-footer">
+                <span class="form-message" id="templateFormMessage"></span>
+                <button type="button" class="btn btn--ghost" data-close-modal>取消</button>
+                <button type="submit" class="btn btn--primary" id="templateFormSubmitBtn">保存模板</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="modal" id="templateInfoModal" aria-hidden="true">
+    <div class="modal-dialog modal-dialog--wide">
+        <header class="modal-header">
+            <h3 id="templateInfoTitle">模板详情</h3>
+            <button class="modal-close" type="button" data-close-modal>&times;</button>
+        </header>
+        <div class="modal-body template-info-body" id="templateInfoBody">
+            <div class="loading">加载中...</div>
+        </div>
+        <footer class="modal-footer">
+            <button type="button" class="btn btn--ghost" data-close-modal>关闭</button>
+        </footer>
+    </div>
 </div>
 {% endblock %}
 
