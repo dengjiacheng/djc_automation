@@ -55,6 +55,15 @@ APP_PORT=${APP_PORT:-8000}
 KEEP_RELEASES=${KEEP_RELEASES:-5}
 FRONTEND_BUILD=${FRONTEND_BUILD:-true}
 ENV_FILE=${ENV_FILE:-}
+ENV_FILE_PATH=""
+
+if [[ -n "$ENV_FILE" ]]; then
+  if [[ "$ENV_FILE" = /* ]]; then
+    ENV_FILE_PATH="$ENV_FILE"
+  else
+    ENV_FILE_PATH="$PROJECT_ROOT/$ENV_FILE"
+  fi
+fi
 
 if [[ -n "${SSH_PASSWORD:-}" ]]; then
   SSH_CMD=(sshpass -p "$SSH_PASSWORD" ssh -p "$SSH_PORT" -o StrictHostKeyChecking=no "$REMOTE_HOST")
@@ -130,13 +139,13 @@ RSYNC_EXCLUDES=(
 log "同步项目文件到远程 releases/$RELEASE_NAME"
 "${RSYNC_CMD[@]}" "${RSYNC_EXCLUDES[@]}" "$PROJECT_ROOT/" "$REMOTE_HOST:$REMOTE_DIR/releases/$RELEASE_NAME/"
 
-if [[ -n "$ENV_FILE" ]]; then
-  if [[ -f "$ENV_FILE" ]]; then
+if [[ -n "$ENV_FILE_PATH" ]]; then
+  if [[ -f "$ENV_FILE_PATH" ]]; then
     log "上传环境变量文件"
     "${SSH_CMD[@]}" "mkdir -p '$REMOTE_DIR/shared'"
-    "${SCP_CMD[@]}" "$ENV_FILE" "$REMOTE_HOST:$REMOTE_DIR/shared/.env.new"
+    "${SCP_CMD[@]}" "$ENV_FILE_PATH" "$REMOTE_HOST:$REMOTE_DIR/shared/.env.new"
   else
-    warn "ENV_FILE 指定的文件不存在：$ENV_FILE"
+    warn "ENV_FILE 指定的文件不存在：${ENV_FILE_PATH}"
   fi
 fi
 
@@ -186,6 +195,10 @@ source "$REMOTE_DIR/venv/bin/activate"
 cd "$REMOTE_DIR/releases/$RELEASE_NAME"
 python -m pip install --upgrade pip wheel setuptools >/dev/null
 python -m pip install -r requirements.txt >/dev/null
+
+if ! command -v alembic >/dev/null 2>&1; then
+  python -m pip install alembic >/dev/null
+fi
 
 if [[ -f "alembic.ini" ]]; then
   alembic upgrade head
