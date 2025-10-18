@@ -16,7 +16,6 @@
             </div>
             <div class="topbar-meta">
                 <span class="avatar-chip" id="userInfo">加载中...</span>
-                <button class="btn btn--outline" type="button" id="controlBtn">设备操作</button>
                 <a class="btn btn--outline" id="scriptLabBtn" href="/script-lab">脚本开发实验室</a>
                 <button class="btn btn--danger" id="logoutBtn">退出登录</button>
             </div>
@@ -65,35 +64,62 @@
 
                 <section class="tab-content" id="apkContent">
                     <div class="tab-panel stack-lg">
-                        <div class="apk-board">
-                            <div class="card apk-card" id="apkInfoCard">
-                                <div class="loading">加载中...</div>
+                        <div class="table-card">
+                            <div class="table-toolbar">
+                                <div>
+                                    <h2 class="section-title">测试 APK 套件</h2>
+                                    <p class="section-subtitle" id="apkSummary">暂无发布记录</p>
+                                </div>
+                                <button class="btn btn--ghost" type="button" id="refreshApkBtn">刷新信息</button>
                             </div>
-                            <div class="card apk-card">
-                                <header class="card-toolbar">
-                                    <div>
-                                        <h2>上传 / 更新测试 APK</h2>
-                                        <p class="muted">提交应用与测试包以更新设备端测试套件</p>
-                                    </div>
-                                    <button class="btn btn--ghost" type="button" id="refreshApkBtn">刷新信息</button>
-                                </header>
-                                <form id="apkUploadForm" class="stack">
-                                    <div class="form-group">
-                                        <label for="appApkFile">主应用 APK</label>
-                                        <input class="form-control" id="appApkFile" name="app_file" type="file" accept=".apk" required>
-                                        <p class="form-help">如 automation-app-debug.apk，上传后会自动读取包名、版本号等信息。</p>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="testApkFile">测试 APK</label>
-                                        <input class="form-control" id="testApkFile" name="test_file" type="file" accept=".apk" required>
-                                        <p class="form-help">如 automation-app-debug-androidTest.apk，用于 instrumentation。</p>
-                                    </div>
-                                    <div class="form-actions">
-                                        <button type="submit" class="btn btn--primary">上传并覆盖</button>
-                                    </div>
-                                    <div class="apk-message" id="apkMessage"></div>
-                                </form>
+                            <div class="table-responsive">
+                                <table class="plain-table plain-table--stretch">
+                                    <thead>
+                                        <tr>
+                                            <th>类型</th>
+                                            <th>包名</th>
+                                            <th>版本号</th>
+                                            <th>Version Code</th>
+                                            <th>文件名</th>
+                                            <th>文件大小</th>
+                                            <th>SHA-256</th>
+                                            <th class="text-right">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="apkInfoBody">
+                                        <tr>
+                                            <td colspan="8">
+                                                <div class="loading">加载中...</div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
+                        </div>
+
+                        <div class="card apk-upload-card">
+                            <header class="card-toolbar">
+                                <div>
+                                    <h2>上传 / 更新测试 APK</h2>
+                                    <p class="muted">提交应用与测试包以更新设备端测试套件</p>
+                                </div>
+                            </header>
+                            <form id="apkUploadForm" class="stack">
+                                <div class="form-group">
+                                    <label for="appApkFile">主应用 APK</label>
+                                    <input class="form-control" id="appApkFile" name="app_file" type="file" accept=".apk" required>
+                                    <p class="form-help">如 automation-app-debug.apk，上传后会自动读取包名、版本号等信息。</p>
+                                </div>
+                                <div class="form-group">
+                                    <label for="testApkFile">测试 APK</label>
+                                    <input class="form-control" id="testApkFile" name="test_file" type="file" accept=".apk" required>
+                                    <p class="form-help">如 automation-app-debug-androidTest.apk，用于 instrumentation。</p>
+                                </div>
+                                <div class="form-actions">
+                                    <button type="submit" class="btn btn--primary">上传并覆盖</button>
+                                </div>
+                                <div class="apk-message" id="apkMessage"></div>
+                            </form>
                         </div>
                     </div>
                 </section>

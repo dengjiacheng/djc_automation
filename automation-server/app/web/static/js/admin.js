@@ -14,14 +14,14 @@ const adminElements = {
   adminsTab: document.getElementById("adminsTab"),
   devicesTableBody: document.getElementById("devicesTableBody"),
   adminsListBody: document.getElementById("adminsListBody"),
-  apkInfoCard: document.getElementById("apkInfoCard"),
+  apkInfoBody: document.getElementById("apkInfoBody"),
+  apkSummary: document.getElementById("apkSummary"),
   apkUploadForm: document.getElementById("apkUploadForm"),
   apkMessage: document.getElementById("apkMessage"),
   refreshApkBtn: document.getElementById("refreshApkBtn"),
   createDeviceBtn: document.getElementById("createDeviceBtn"),
   createAdminBtn: document.getElementById("createAdminBtn"),
   logoutBtn: document.getElementById("logoutBtn"),
-  controlBtn: document.getElementById("controlBtn"),
   scriptLabBtn: document.getElementById("scriptLabBtn"),
 };
 
@@ -69,9 +69,6 @@ function bindAdminEvents() {
   }
 
   adminElements.logoutBtn.addEventListener("click", logout);
-  adminElements.controlBtn.addEventListener("click", () => {
-    window.location.href = "/control";
-  });
   if (adminElements.scriptLabBtn) {
     adminElements.scriptLabBtn.addEventListener("click", () => {
       window.location.href = "/script-lab";
@@ -216,14 +213,21 @@ async function loadDevices() {
 }
 
 async function loadApkInfo() {
-  if (!adminElements.apkInfoCard) {
+  if (!adminElements.apkInfoBody) {
     return;
   }
 
   setApkMessage(null, "");
+  if (adminElements.apkSummary) {
+    adminElements.apkSummary.textContent = "加载中...";
+  }
 
-  adminElements.apkInfoCard.innerHTML = `
-    <div class="loading">加载中...</div>
+  adminElements.apkInfoBody.innerHTML = `
+    <tr>
+        <td colspan="8">
+            <div class="loading">加载中...</div>
+        </td>
+    </tr>
   `;
 
   try {
@@ -239,11 +243,7 @@ async function loadApkInfo() {
     }
 
     if (response.status === 404) {
-      adminElements.apkInfoCard.innerHTML = `
-        <div class="empty-state">
-            <p>暂无测试 APK</p>
-        </div>
-      `;
+      renderApkInfo(null);
       return;
     }
 
@@ -255,107 +255,87 @@ async function loadApkInfo() {
     renderApkInfo(info);
   } catch (error) {
     console.error("加载测试 APK 信息失败:", error);
-    adminElements.apkInfoCard.innerHTML = `
-      <div class="empty-state">
-          <p>加载测试 APK 信息失败，请稍后重试</p>
-      </div>
+    adminElements.apkInfoBody.innerHTML = `
+      <tr>
+          <td colspan="8">
+              <div class="empty-state">
+                  <p>加载测试 APK 信息失败，请稍后重试</p>
+              </div>
+          </td>
+      </tr>
     `;
+    if (adminElements.apkSummary) {
+      adminElements.apkSummary.textContent = "加载失败";
+    }
   }
 }
 
 function renderApkInfo(info) {
-  if (!adminElements.apkInfoCard) {
+  if (!adminElements.apkInfoBody) {
     return;
   }
+
   if (!info) {
-    adminElements.apkInfoCard.innerHTML = `
-      <div class="empty-state">
-          <p>暂无测试 APK</p>
-      </div>
+    if (adminElements.apkSummary) {
+      adminElements.apkSummary.textContent = "暂无发布记录";
+    }
+    adminElements.apkInfoBody.innerHTML = `
+      <tr>
+          <td colspan="8">
+              <div class="empty-state">
+                  <p>暂无测试 APK</p>
+              </div>
+          </td>
+      </tr>
     `;
     return;
   }
 
-  const rows = [
-    { label: "版本号", value: info.version || "-" },
-    { label: "版本 Code", value: info.version_code ?? "-" },
-    { label: "发布时间", value: formatDate(info.created_at) },
-  ];
+  const summaryPieces = [];
+  if (info.version || info.version_code !== undefined) {
+    summaryPieces.push(`版本 ${info.version || "-"} (#${info.version_code ?? "-"})`);
+  }
+  if (info.created_at) {
+    summaryPieces.push(`发布于 ${formatDate(info.created_at)}`);
+  }
+  if (adminElements.apkSummary) {
+    adminElements.apkSummary.textContent = summaryPieces.length ? summaryPieces.join(" · ") : "已发布测试套件";
+  }
 
-  const rowsHtml = rows
-    .map(
-      (row) => `
-        <div class="apk-info-row">
-            <span class="apk-info-label">${row.label}</span>
-            <span class="apk-info-value">${row.value}</span>
-        </div>
-      `
-    )
-    .join("");
+  const rows = [];
+  rows.push(renderApkRow("主应用", info.app));
+  rows.push(renderApkRow("测试 APK", info.test));
 
-  adminElements.apkInfoCard.innerHTML = `
-    <div class="apk-card-header">
-        <h2>当前测试套件</h2>
-        <span class="apk-version-tag">${info.version || "-"} (#${info.version_code ?? "-"})</span>
-    </div>
-    <div class="apk-info">
-        ${rowsHtml}
-    </div>
-    <div class="apk-asset-grid">
-        ${renderApkAsset("主应用 APK", info.app)}
-        ${renderApkAsset("测试 APK", info.test)}
-    </div>
-  `;
+  const availableRows = rows.filter((row) => Boolean(row)).join("");
+  adminElements.apkInfoBody.innerHTML = availableRows
+    || `
+      <tr>
+          <td colspan="8">
+              <div class="empty-state">
+                  <p>暂无测试 APK</p>
+              </div>
+          </td>
+      </tr>
+    `;
 }
 
-function renderApkAsset(title, asset) {
-  if (!asset) {
-    return `
-      <div class="apk-asset-card">
-          <h3>${title}</h3>
-          <div class="empty-state">
-              <p>暂无数据</p>
-          </div>
-      </div>
-    `;
-  }
-
-  const rows = [
-    { label: "版本 Code", value: asset.version_code ?? "-" },
-    { label: "版本号", value: asset.version_name || "-" },
-    { label: "文件名", value: asset.file_name || "-" },
-    { label: "文件大小", value: formatBytes(asset.size_bytes) },
-    { label: "包名", value: asset.package_name || "-" },
-    { label: "SHA-256", value: asset.checksum_sha256 || "-" },
-  ];
-
-  const details = rows
-    .map(
-      (row) => `
-        <tr>
-            <th>${row.label}</th>
-            <td>${row.value}</td>
-        </tr>
-      `
-    )
-    .join("");
-
-  const downloadButton = asset.download_url
-    ? `<a class="btn-secondary" href="${asset.download_url}" target="_blank" rel="noopener">下载</a>`
-    : "";
+function renderApkRow(title, asset) {
+  const data = asset || {};
+  const downloadCell = data.download_url
+    ? `<a class="btn btn--outline" href="${data.download_url}" target="_blank" rel="noopener">下载</a>`
+    : '<span class="muted">无</span>';
 
   return `
-    <div class="apk-asset-card">
-        <div class="apk-asset-header">
-            <h3>${title}</h3>
-            ${downloadButton}
-        </div>
-        <table class="apk-asset-table">
-            <tbody>
-                ${details}
-            </tbody>
-        </table>
-    </div>
+    <tr>
+        <td>${title}</td>
+        <td>${data.package_name || "-"}</td>
+        <td>${data.version_name || "-"}</td>
+        <td>${data.version_code ?? "-"}</td>
+        <td>${data.file_name || "-"}</td>
+        <td>${formatBytes(data.size_bytes)}</td>
+        <td><span class="hash-text">${data.checksum_sha256 || "-"}</span></td>
+        <td class="text-right">${downloadCell}</td>
+    </tr>
   `;
 }
 

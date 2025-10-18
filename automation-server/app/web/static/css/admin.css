@@ -49,28 +49,6 @@
     border-color: rgba(250, 204, 21, 0.24);
 }
 
-.apk-board {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 24px;
-}
-
-.apk-card {
-    min-height: 280px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    border: 1px solid rgba(99, 102, 241, 0.12);
-    border-radius: var(--radius-lg);
-    background: linear-gradient(180deg, rgba(99, 102, 241, 0.05), transparent 55%) var(--color-surface);
-    box-shadow: var(--shadow-xs);
-    padding: 24px;
-}
-
-.apk-card .form-group {
-    gap: 10px;
-}
-
 .apk-message {
     margin-top: 8px;
     font-size: 0.875rem;
@@ -112,6 +90,11 @@
     background: var(--color-surface);
 }
 
+.plain-table--stretch {
+    width: 100%;
+    table-layout: auto;
+}
+
 .plain-table thead {
     background: rgba(99, 102, 241, 0.08);
 }
@@ -130,6 +113,12 @@
 
 .text-right {
     text-align: right;
+}
+
+.hash-text {
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.82rem;
+    word-break: break-all;
 }
 
 .admin-shell .tabs {
@@ -184,6 +173,21 @@
     border: 1px solid rgba(99, 102, 241, 0.12);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-xs);
+}
+
+.apk-upload-card {
+    border: 1px solid rgba(99, 102, 241, 0.12);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.04), transparent 60%) var(--color-surface);
+    box-shadow: var(--shadow-xs);
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.apk-upload-card .form-group {
+    gap: 10px;
 }
 
 @media (max-width: 768px) {
