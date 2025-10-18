@@ -319,6 +319,13 @@ async def _handle_command_result(
                 "device_id": target.device_id,
                 "target_status": target.status,
                 "finished": finished,
+                "target": {
+                    "device_id": target.device_id,
+                    "command_id": target.command_id,
+                    "status": target.status,
+                    "completed_at": target.completed_at.isoformat() if target.completed_at else None,
+                    "error_message": target.error_message,
+                },
             }
             await manager.send_to_web(job.owner_id, {"type": "script_job_update", "data": message})
 

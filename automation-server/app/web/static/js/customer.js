@@ -738,8 +738,33 @@ function formatPrice(cents, currency = "CNY") {
 
 function handleJobUpdate(data) {
   if (!data || !data.job_id) return;
+  const existing = customerState.jobs.find((job) => job.id === data.job_id);
+  if (!existing) {
+    loadJobs();
+    return;
+  }
+  if (data.status) {
+    existing.status = data.status;
+  }
+  if (typeof data.success_count === "number") {
+    existing.success_count = data.success_count;
+  }
+  if (typeof data.failed_count === "number") {
+    existing.failed_count = data.failed_count;
+  }
+  if (data.target) {
+    const target = existing.targets.find((item) => item.device_id === data.target.device_id);
+    if (target) {
+      target.status = data.target.status;
+      target.completed_at = data.target.completed_at;
+      target.command_id = data.target.command_id;
+      target.error_message = data.target.error_message;
+    } else {
+      existing.targets.push(data.target);
+    }
+  }
   showToast(`任务 ${data.job_id.slice(0, 8)} 状态更新为 ${data.status}`, "success");
-  loadJobs();
+  renderJobTable();
 }
 
 function formatInputValue(value, type) {
