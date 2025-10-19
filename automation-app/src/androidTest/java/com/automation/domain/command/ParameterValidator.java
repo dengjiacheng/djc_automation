@@ -203,21 +203,38 @@ public final class ParameterValidator {
                 payload.put("value", raw.toString());
             }
 
+            String assetId = payload.optString("asset_id", "").trim();
+            boolean hasAssetId = !assetId.isEmpty();
+
             String source = payload.optString("source", "").trim();
             if (source.isEmpty()) {
-                String value = payload.optString("value", "");
-                if (looksLikeUrl(value)) {
-                    source = "url";
-                } else if (looksLikePath(value)) {
-                    source = "path";
+                if (hasAssetId) {
+                    source = "asset";
                 } else {
-                    source = "base64";
+                    String value = payload.optString("value", "");
+                    if (looksLikeUrl(value)) {
+                        source = "url";
+                    } else if (looksLikePath(value)) {
+                        source = "path";
+                    } else {
+                        source = "base64";
+                    }
                 }
                 payload.put("source", source);
             }
 
-            if (!payload.has("value")) {
-                throw new IllegalArgumentException("文件参数缺少 value 字段: " + parameter.name());
+            boolean hasValue = payload.has("value") && !payload.isNull("value");
+            if ("asset".equalsIgnoreCase(source)) {
+                if (!hasAssetId) {
+                    throw new IllegalArgumentException("文件参数缺少 asset_id: " + parameter.name());
+                }
+            } else {
+                if (!hasValue) {
+                    throw new IllegalArgumentException("文件参数缺少 value 字段: " + parameter.name());
+                }
+                if (hasValue && payload.optString("value").trim().isEmpty()) {
+                    throw new IllegalArgumentException("文件参数缺少 value 字段: " + parameter.name());
+                }
             }
 
             if (parameter.parameterType() == ParameterType.IMAGE && !payload.has("mime")) {
