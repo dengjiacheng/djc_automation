@@ -121,6 +121,10 @@ public final class AuthService {
                 .getString(KEY_WS_URL, null);
     }
 
+    public String getServerUrl() {
+        return serverUrl;
+    }
+
     private void saveAuth(String token, String deviceId, String wsUrl) {
         SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit()

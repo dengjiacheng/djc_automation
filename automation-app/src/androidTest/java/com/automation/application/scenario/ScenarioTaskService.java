@@ -35,7 +35,11 @@ public final class ScenarioTaskService {
 
     public CommandResult startTask(CommandContext ctx, JSONObject params) throws Exception {
         ScenarioTaskRequest request = parameterBinder.bind(params);
-        return runCoordinator.execute(ctx, request);
+        try {
+            return runCoordinator.execute(ctx, request);
+        } finally {
+            parameterBinder.clearAssetCache();
+        }
     }
 
     public JSONObject buildStartTaskMetadata() {

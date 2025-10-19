@@ -315,6 +315,16 @@ class ScriptJobListResponse(BaseModel):
     jobs: list[ScriptJobResponse] = Field(default_factory=list)
 
 
+class TemplateAssetResponse(BaseModel):
+    id: str
+    file_name: str
+    content_type: Optional[str] = None
+    size_bytes: int
+    checksum_sha256: str
+    created_at: datetime
+    download_url: Optional[str] = None
+
+
 class ScriptJobCreateRequest(BaseModel):
     template_id: str = Field(..., description="模板ID")
     device_ids: list[str] = Field(..., description="目标设备ID列表", min_length=1)

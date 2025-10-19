@@ -119,6 +119,9 @@ class ScriptJobService:
             id=model.id,
             job_id=model.job_id,
             device_id=model.device_id,
+            device_name=getattr(model, "device_name", None) or (
+                getattr(model, "device", None).device_name if getattr(model, "device", None) else None
+            ),
             command_id=model.command_id,
             status=model.status,
             sent_at=model.sent_at,

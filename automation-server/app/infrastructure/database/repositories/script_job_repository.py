@@ -51,6 +51,7 @@ class SqlScriptJobRepository:
             ScriptJobTarget(
                 job_id=job_id,
                 device_id=entry["device_id"],
+                device_name=entry.get("device_name"),
                 command_id=entry.get("command_id"),
                 status=entry.get("status", "pending"),
                 sent_at=entry.get("sent_at"),

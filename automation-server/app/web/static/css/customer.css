@@ -343,6 +343,26 @@
     color: var(--color-text-muted);
 }
 
+.parameter-file .file-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.parameter-file .file-input-group .file-upload-input {
+    flex: 1;
+}
+
+.parameter-file-status {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+}
+
+.parameter-file-status.error {
+    color: #dc2626;
+}
+
 .parameter-hint {
     font-size: 0.75rem;
     color: var(--color-text-muted);

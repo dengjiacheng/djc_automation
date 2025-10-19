@@ -444,6 +444,36 @@ async function loadAdmins() {
       return;
     }
 
+    const rows = admins
+      .map((admin) => {
+        const createdAt = admin.created_at ? new Date(admin.created_at).toLocaleDateString("zh-CN") : "-";
+        let roleLabel = '<span class="badge badge--info">管理员</span>';
+        if (admin.role === "super_admin") {
+          roleLabel = '<span class="badge badge--warning">超级管理员</span>';
+        } else if (admin.role === "user" || !admin.role) {
+          roleLabel = '<span class="badge">普通用户</span>';
+        }
+        const deleteBtn =
+          admin.role && admin.role !== "super_admin"
+            ? `<button
+                  class="btn btn--link text-danger"
+                  data-action="delete-admin"
+                  data-admin-id="${admin.id}"
+                  data-username="${admin.username}"
+              >删除</button>`
+            : "";
+        return `
+          <tr>
+              <td>${admin.username}</td>
+              <td>${admin.email || "无邮箱"}</td>
+              <td>${roleLabel}</td>
+              <td>${createdAt}</td>
+              <td class="text-right">${deleteBtn}</td>
+          </tr>
+        `;
+      })
+      .join("");
+
     adminElements.adminsListBody.innerHTML = `
       <table class="plain-table">
           <thead>
@@ -455,35 +485,7 @@ async function loadAdmins() {
                   <th class="text-right">操作</th>
               </tr>
           </thead>
-          <tbody>
-              ${admins
-                .map((admin) => {
-                  const createdAt = new Date(admin.created_at).toLocaleDateString("zh-CN");
-                  const roleLabel =
-                    admin.role === "super_admin"
-                      ? '<span class="badge badge--warning">超级管理员</span>'
-                      : '<span class="badge badge--info">管理员</span>';
-                  const deleteBtn =
-                    admin.role !== "super_admin"
-                      ? `<button
-                            class="btn btn--link text-danger"
-                            data-action="delete-admin"
-                            data-admin-id="${admin.id}"
-                            data-username="${admin.username}"
-                        >删除</button>`
-                      : "";
-                  return `
-                    <tr>
-                        <td>${admin.username}</td>
-                        <td>${admin.email || "无邮箱"}</td>
-                        <td>${roleLabel}</td>
-                        <td>${createdAt}</td>
-                        <td class="text-right">${deleteBtn}</td>
-                    </tr>
-                  `;
-                })
-                .join("")}
-          </tbody>
+          <tbody>${rows}</tbody>
       </table>
     `;
   } catch (error) {

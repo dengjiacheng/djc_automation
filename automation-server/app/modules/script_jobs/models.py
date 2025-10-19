@@ -29,6 +29,7 @@ class ScriptJobTarget:
     id: str
     job_id: str
     device_id: str
+    device_name: Optional[str]
     command_id: Optional[str]
     status: str
     sent_at: Optional[datetime]

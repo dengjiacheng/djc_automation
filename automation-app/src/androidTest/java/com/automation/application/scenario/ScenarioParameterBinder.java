@@ -11,6 +11,10 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import androidx.annotation.Nullable;
+
+import com.automation.application.scenario.TemplateAssetManager;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -27,9 +31,20 @@ public final class ScenarioParameterBinder {
     private static final String TAG = "ScenarioParamBinder";
 
     private final ScenarioCatalog catalog;
+    private TemplateAssetManager assetManager;
 
     public ScenarioParameterBinder(ScenarioCatalog catalog) {
         this.catalog = Objects.requireNonNull(catalog, "catalog");
+    }
+
+    public void setAssetManager(@Nullable TemplateAssetManager manager) {
+        this.assetManager = manager;
+    }
+
+    public void clearAssetCache() {
+        if (assetManager != null) {
+            assetManager.clearCache();
+        }
     }
 
     public List<CommandParameter> baseParameters() {
@@ -66,6 +81,10 @@ public final class ScenarioParameterBinder {
         ParameterValidator validator = new ParameterValidator(parameterSchema(script));
         JSONObject normalized = validator.validate(payload);
 
+        if (assetManager != null) {
+            resolveFileParameters(script, normalized);
+        }
+
         String normalizedTask = normalized.optString("task_name", taskName);
         JSONObject normalizedConfig = normalized.optJSONObject("config");
 
@@ -77,6 +96,37 @@ public final class ScenarioParameterBinder {
 
         return new ScenarioTaskRequest(normalizedTask, script, contextData,
                 normalizedConfig != null ? normalizedConfig : new JSONObject());
+    }
+
+    private void resolveFileParameters(ScenarioScript script, JSONObject normalized) throws JSONException {
+        if (normalized == null || !normalized.has("config")) {
+            return;
+        }
+        JSONObject config = normalized.optJSONObject("config");
+        if (config == null) {
+            return;
+        }
+        for (ScriptParameterSpec spec : script.parameterSpecs()) {
+            String type = normalizeParamType(spec.type());
+            if (!"file".equals(type) && !"image".equals(type)) {
+                continue;
+            }
+            if (!config.has(spec.name())) {
+                continue;
+            }
+            Object raw = config.get(spec.name());
+            if (raw instanceof JSONObject json) {
+                try {
+                    JSONObject resolved = assetManager.resolve(json, type);
+                    if (resolved != null) {
+                        config.put(spec.name(), resolved);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to resolve asset parameter: " + spec.name(), e);
+                    throw new IllegalStateException("下载脚本资源失败: " + spec.name(), e);
+                }
+            }
+        }
     }
 
     private List<CommandParameter> parameterSchema(ScenarioScript script) {

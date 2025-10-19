@@ -29,6 +29,7 @@ class SecuritySettings(BaseModel):
 
 class StorageSettings(BaseModel):
     test_apk_dir: Path = Field(default=Path("storage/test_apk"))
+    template_asset_dir: Path = Field(default=Path("storage/template_assets"))
 
 
 class WebSocketSettings(BaseModel):
@@ -87,6 +88,10 @@ class Settings(BaseSettings):
     @property
     def test_apk_storage_dir(self) -> str:
         return str(self.storage.test_apk_dir)
+
+    @property
+    def template_asset_storage_dir(self) -> str:
+        return str(self.storage.template_asset_dir)
 
     @property
     def ws_heartbeat_interval(self) -> int:

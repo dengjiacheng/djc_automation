@@ -17,6 +17,7 @@ import com.automation.domain.command.CommandResult;
 import com.automation.infrastructure.network.AutomationMessage;
 import com.automation.infrastructure.network.AutomationWebSocketClient;
 import com.automation.infrastructure.network.AuthService;
+import com.automation.application.scenario.TemplateAssetManager;
 
 import org.json.JSONObject;
 
@@ -79,6 +80,9 @@ public final class AutomationController implements AutomationWebSocketClient.Mes
     public void setAuthService(AuthService authService) {
         this.authService = authService;
         this.webSocketClient.setAuthService(authService);
+        if (authService != null) {
+            this.commandEngine.setAssetManager(new TemplateAssetManager(authService));
+        }
         if (authService != null) {
             String saved = authService.getSavedDeviceId();
             if (saved != null) {

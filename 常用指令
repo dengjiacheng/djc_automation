@@ -1,0 +1,111 @@
+部署步骤
+
+连接设备
+adb start-server
+adb connect 192.168.0.111:5555
+adb connect 192.168.0.109:5555
+adb devices （确认列表里出现 192.168.0.109:5555）
+
+安装  控制APK
+./gradlew auth-app:assembleDebug
+adb -s 192.168.0.115:5555 install -r auth-app/build/outputs/apk/debug/auth-app-debug.apk
+
+adb -s 192.168.0.112:5555 uninstall com.automation
+
+编译 测试APK
+./gradlew automation-app:assembleDebug
+./gradlew automation-app:assembleDebugAndroidTest
+
+
+
+python scripts/build_and_upload.py --server http://120.26.211.209 --username admin --password admin123
+
+adb -s 192.168.0.111:5555  shell ime enable com.automation/.AdbKeyboard
+
+
+安装 测试 主APK
+adb install -r -t automation-app/build/outputs/apk/debug/automation-app-debug.apk
+
+安装 instrumentation 测试 APK
+adb install -r -t automation-app/build/outputs/apk/androidTest/debug/automation-app-debug-androidTest.apk
+
+（可选）手动触发测试
+如果想直接从命令行拉起测试：
+adb shell su -c "am instrument -w -r -e wsUrl <你的ws地址> com.automation.test/androidx.test.runner.AndroidJUnitRunner"
+平时只需在设备上打开控制台 App（新的 MainActivity）点击“登录并启动测试”。
+
+
+验证一下可以在命令行里观察：
+adb shell ps | grep com.automation        # 启动前
+adb shell su -c "am instrument …"        # 启动测试
+adb shell ps | grep com.automation        # 会看到主进程被杀，出现 instrumentation 进程
+
+
+adb logcat | grep AutomationTest
+
+
+
+adb uninstall com.automation.test
+adb uninstall com.automation
+adb shell pm path com.automation.test
+
+adb -s 192.168.0.111:5555 uninstall com.automation
+logcat
+
+$ bash -lc 'adb -s 192.168.0.111:5555 shell '"'"'logcat -d | grep "注册脚本能力失败"'"'"
+
+$ bash -lc 'adb -s 192.168.0.111:5555 shell '"'"'logcat -d | grep "列举脚本能力失败"'"'"
+
+$ bash -lc 'adb -s 192.168.0.111:5555 shell '"'"'grep "CommandExecutionEngine" /storage/emulated/0/Android/data/com.automation.auth/files/logs/automation.log'"'"
+grep: /storage/emulated/0/Android/data/com.automation.auth/files/logs/automation.log: No such file or directory
+adb connect 192.168.0.115:5555
+
+adb -s 192.168.0.115:5555 shell pm path com.automation.test
+
+adb  -s 192.168.0.115:5555 logcat -s CommandBus ParameterValidator ScenarioParamBinder ScenarioTaskService ScenarioRunCoord ScenarioRunner ScenarioEngine AutomationController DhgateOrderHandlers
+
+{
+  "action": "start_task",
+  "params": {
+    "task_name": "dhgate_order_v2",
+    "config": {
+      "search_keyword": "demo keyword",
+      "product_image": {
+        "value": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/xcAAvoB9p7N9W4AAAAASUVORK5CYII=",
+        "source": "base64",
+        "mime": "image/png"
+      },
+      "target_product_title": "demo title"
+    }
+  }
+}
+
+
+taskName=dhgate_order_v2
+
+
+adb logcat -s CommandBus ParameterValidator ScenarioParamBinder ScenarioTaskService ScenarioRunCoord ScenarioRunner ScenarioEngine AutomationController DhgateOrderHandlers
+
+请在完成以下任务时保持连续执行，不中断输出：
+深入分析项目automation-server的功能与模块，了解项目之间的配合（automation-server+automation-app），；
+
+基于分析结果，重新设计项目整体架构与目录结构；
+
+按新架构分步重构所有模块（保持运行逻辑与功能一致）；
+
+输出重构前后对比、优化细节、性能改进与可扩展性设计；
+
+全程保持分层、职责清晰、可维护、可扩展；
+
+生成最终架构图与完整的模块说明文档。 包括 html js css 等。
+
+目前项目由于automation-server 新增了很多功能， 还存在很多bug,导致部分功能不正常或存在问题。重构过程发的问题一并重构修复
+
+可参考文档 PROJECT_OVERVIEW.md 便于快速了解项目，后续目前项目由于automation-server 新增很多功能并未记录进文档，需要看代码分析。
+
+只需要重构automation-server
+中文回复
+
+
+
+

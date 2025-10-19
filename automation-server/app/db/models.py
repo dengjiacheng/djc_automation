@@ -94,6 +94,21 @@ class ScriptTemplate(Base):
     owner = relationship("Account")
 
 
+class TemplateAsset(Base):
+    __tablename__ = "template_assets"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    owner_id = Column(String(36), ForeignKey("accounts.id"), nullable=False, index=True)
+    file_name = Column(String(255), nullable=False)
+    content_type = Column(String(100))
+    size_bytes = Column(Integer, nullable=False)
+    checksum_sha256 = Column(String(64), nullable=False)
+    storage_path = Column(String(500), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    owner = relationship("Account")
+
+
 class ScriptJob(Base):
     __tablename__ = "script_jobs"
 
@@ -127,6 +142,7 @@ class ScriptJobTarget(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     job_id = Column(String(36), ForeignKey("script_jobs.id"), nullable=False, index=True)
     device_id = Column(String(36), ForeignKey("devices.id"), nullable=False)
+    device_name = Column(String(100))
     command_id = Column(String(36), nullable=True, index=True)
     status = Column(String(20), nullable=False, default="pending")
     result = Column(Text)

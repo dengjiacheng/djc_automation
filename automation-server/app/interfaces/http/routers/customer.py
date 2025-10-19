@@ -7,10 +7,12 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, status, UploadFile, File, Request
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.interfaces.http.deps import get_db_session
+from app.core.config import get_settings
 from app.core.security import get_current_account
 from app.modules.accounts import Account as AccountDomain
 from app.modules.devices import DeviceService
@@ -20,6 +22,7 @@ from app.modules.script_jobs.models import ScriptJob, ScriptJobTarget
 from app.modules.wallets import WalletService
 from app.modules.topups import TopupService
 from app.modules.commands import CommandService
+from app.modules.assets import TemplateAssetService
 from app.schemas import (
     AccountResponse,
     DeviceListResponse,
@@ -44,10 +47,13 @@ from app.schemas import (
     ScriptTemplateListResponse,
     ScriptTemplateSummary,
     ScriptTemplateUpdate,
+    TemplateAssetResponse,
 )
 from app.interfaces.ws.manager import manager
 
 router = APIRouter()
+
+FILE_PARAMETER_TYPES = {"file", "image"}
 
 
 async def get_current_customer(account: AccountDomain = Depends(get_current_account)) -> AccountDomain:
@@ -192,6 +198,58 @@ async def list_wallet_topups(
 
 
 @router.post(
+    "/assets",
+    response_model=TemplateAssetResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="上传脚本资源文件",
+)
+async def upload_template_asset(
+    request: Request,
+    file: UploadFile = File(...),
+    account: AccountDomain = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db_session),
+) -> TemplateAssetResponse:
+    asset_service = TemplateAssetService.with_session(db)
+    try:
+        asset = await asset_service.store_upload(account.id, file)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    await db.commit()
+    download_url = request.url_for("download_template_asset", asset_id=asset.id)
+    return TemplateAssetResponse(
+        id=asset.id,
+        file_name=asset.file_name,
+        content_type=asset.content_type,
+        size_bytes=asset.size_bytes,
+        checksum_sha256=asset.checksum_sha256,
+        created_at=asset.created_at,
+        download_url=str(download_url),
+    )
+
+
+@router.get(
+    "/assets/{asset_id}",
+    summary="下载脚本资源文件",
+)
+async def download_template_asset(
+    asset_id: str,
+    account: AccountDomain = Depends(get_current_account),
+    db: AsyncSession = Depends(get_db_session),
+):
+    asset_service = TemplateAssetService.with_session(db)
+    asset = await asset_service.get_asset(asset_id)
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资源不存在")
+    if account.role not in {"admin", "super_admin"} and asset.owner_id != account.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权访问该资源")
+    return FileResponse(
+        asset.storage_path,
+        media_type=asset.content_type or "application/octet-stream",
+        filename=asset.file_name,
+    )
+
+
+@router.post(
     "/templates",
     response_model=ScriptTemplateDetail,
     status_code=status.HTTP_201_CREATED,
@@ -217,6 +275,14 @@ async def create_script_template(
 
     # task_name 必须与脚本名称保持一致，忽略前端传入的值
     normalized_config["task_name"] = payload.script_name
+
+    asset_service = TemplateAssetService.with_session(db)
+    normalized_config = await _sanitize_template_config(
+        normalized_config,
+        schema_payload.get("parameters", []),
+        account.id,
+        asset_service,
+    )
 
     service = ScriptTemplateService.with_session(db)
     template = await service.create_template(
@@ -292,6 +358,7 @@ async def update_script_template(
     if template is None or template.owner_id != account.id or template.status == "deleted":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="模板不存在")
 
+    asset_service = TemplateAssetService.with_session(db)
     updated_config = copy.deepcopy(template.defaults)
     if payload.config is not None:
         try:
@@ -301,6 +368,12 @@ async def update_script_template(
             _deep_merge(updated_config, partial_update)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        updated_config = await _sanitize_template_config(
+            updated_config,
+            template.schema.get("parameters", []),
+            account.id,
+            asset_service,
+        )
     # 保证 task_name 始终与脚本名称一致
     updated_config["task_name"] = template.script_name
 
@@ -709,6 +782,191 @@ def _deep_merge(target: dict[str, Any], updates: dict[str, Any]) -> None:
             target[key] = copy.deepcopy(value)
 
 
+def _build_param_type_map(parameters: Iterable[dict[str, Any]]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    if not parameters:
+        return mapping
+    for spec in parameters:
+        name = spec.get("name")
+        if not name:
+            continue
+        mapping[name] = (spec.get("type") or "").lower()
+    return mapping
+
+
+async def _sanitize_template_config(
+    config: dict[str, Any],
+    parameters: Iterable[dict[str, Any]],
+    owner_id: str,
+    asset_service: TemplateAssetService,
+) -> dict[str, Any]:
+    if not parameters:
+        return config
+    type_map = _build_param_type_map(parameters)
+    flat = _flatten_dict(config)
+    sanitized_flat: dict[str, Any] = {}
+    for path, value in flat.items():
+        param_type = type_map.get(path)
+        if param_type in FILE_PARAMETER_TYPES:
+            sanitized_flat[path] = await _sanitize_file_value(value, owner_id, param_type, asset_service)
+        else:
+            sanitized_flat[path] = value
+    sanitized: dict[str, Any] = {}
+    for path, value in sanitized_flat.items():
+        _assign_path(sanitized, path, value)
+    return sanitized
+
+
+async def _resolve_execution_config(
+    config: dict[str, Any],
+    parameters: Iterable[dict[str, Any]],
+    owner_id: str,
+    asset_service: TemplateAssetService,
+) -> dict[str, Any]:
+    if not parameters:
+        return config
+    type_map = _build_param_type_map(parameters)
+    flat = _flatten_dict(config)
+    resolved_flat: dict[str, Any] = {}
+    for path, value in flat.items():
+        param_type = type_map.get(path)
+        if param_type in FILE_PARAMETER_TYPES:
+            resolved_flat[path] = await _resolve_file_value(value, owner_id, param_type, asset_service)
+        else:
+            resolved_flat[path] = value
+    resolved: dict[str, Any] = {}
+    for path, value in resolved_flat.items():
+        _assign_path(resolved, path, value)
+    return resolved
+
+
+async def _sanitize_file_value(
+    raw_value: Any,
+    owner_id: str,
+    param_type: str,
+    asset_service: TemplateAssetService,
+) -> Any:
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, str):
+        raw_value = {"source": "base64", "value": raw_value}
+    if not isinstance(raw_value, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="文件参数格式错误")
+
+    payload = dict(raw_value)
+    source = (payload.get("source") or "").lower()
+    if not source and payload.get("asset_id"):
+        source = "asset"
+
+    if source == "asset":
+        asset_id = payload.get("asset_id")
+        if not asset_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="文件参数缺少 asset_id")
+        asset = await asset_service.get_asset(asset_id)
+        if asset is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="文件资源不存在")
+        try:
+            await asset_service.ensure_owner(asset, owner_id)
+        except PermissionError:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="无权访问该文件资源") from None
+        download_path = payload.get("download_path")
+        settings = get_settings()
+        if not download_path:
+            download_path = f"{settings.api_prefix}/customer/assets/{asset.id}"
+        sanitized = {
+            "type": param_type,
+            "source": "asset",
+            "asset_id": asset.id,
+            "name": payload.get("name") or asset.file_name,
+            "mime": payload.get("mime") or asset.content_type,
+            "size": asset.size_bytes,
+            "checksum": payload.get("checksum") or asset.checksum_sha256,
+            "download_path": download_path,
+        }
+        if payload.get("download_url"):
+            sanitized["download_url"] = payload["download_url"]
+        return sanitized
+
+    if source in {"url", "path"}:
+        value = payload.get("value")
+        if not value:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="文件参数缺少 value")
+        sanitized = {
+            "type": param_type,
+            "source": source,
+            "value": value,
+        }
+        for key in ("name", "mime", "checksum", "size"):
+            if payload.get(key) is not None:
+                sanitized[key] = payload[key]
+        return sanitized
+
+    if source == "base64":
+        value = payload.get("value")
+        if not value:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="文件参数缺少 value")
+        sanitized = {
+            "type": param_type,
+            "source": "base64",
+            "value": value,
+        }
+        for key in ("name", "mime", "checksum", "size"):
+            if payload.get(key) is not None:
+                sanitized[key] = payload[key]
+        return sanitized
+
+    raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="暂不支持的文件来源类型")
+
+
+async def _resolve_file_value(
+    value: Any,
+    owner_id: str,
+    param_type: str,
+    asset_service: TemplateAssetService,
+) -> Any:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        return value
+    payload = dict(value)
+    source = (payload.get("source") or "").lower()
+    if not source and payload.get("asset_id"):
+        source = "asset"
+
+    if source == "asset":
+        asset_id = payload.get("asset_id")
+        if not asset_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="文件参数缺少 asset_id")
+        asset = await asset_service.get_asset(asset_id)
+        if asset is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="文件资源不存在")
+        try:
+            await asset_service.ensure_owner(asset, owner_id)
+        except PermissionError:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="无权访问该文件资源") from None
+        settings = get_settings()
+        download_path = payload.get("download_path") or f"{settings.api_prefix}/customer/assets/{asset.id}"
+        result = {
+            "type": param_type,
+            "source": "asset",
+            "asset_id": asset.id,
+            "name": payload.get("name") or asset.file_name,
+            "mime": payload.get("mime") or asset.content_type,
+            "size": asset.size_bytes,
+            "checksum": payload.get("checksum") or asset.checksum_sha256,
+            "download_path": download_path,
+        }
+        if payload.get("download_url"):
+            result["download_url"] = payload["download_url"]
+        return result
+
+    if source in {"base64", "url", "path"}:
+        payload.setdefault("type", param_type)
+        return payload
+
+    return payload
+
+
 def _to_script_capability_info(name: str, data: dict[str, Any]) -> ScriptCapabilityInfo:
     schema = data["schema"]
     parameters = [
@@ -779,7 +1037,7 @@ def _to_job_response(
             ScriptJobTargetResponse(
                 id=target.id,
                 device_id=target.device_id,
-                device_name=device_map.get(target.device_id),
+                device_name=target.device_name or device_map.get(target.device_id),
                 command_id=target.command_id,
                 status=target.status,
                 sent_at=target.sent_at,
@@ -813,10 +1071,17 @@ async def _start_job_execution(
         if snapshot.balance_cents < total_price:
             raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="余额不足，请先充值后执行")
 
+    asset_service = TemplateAssetService.with_session(db)
     execution_config = copy.deepcopy(template.defaults)
-    params = {
+    command_config = await _resolve_execution_config(
+        copy.deepcopy(execution_config),
+        capability.get("schema", {}).get("parameters", []),
+        account.id,
+        asset_service,
+    )
+    command_params = {
         "task_name": template.script_name,
-        "config": execution_config,
+        "config": command_config,
     }
 
     targets_payload = []
@@ -827,12 +1092,12 @@ async def _start_job_execution(
         command = await command_service.create_command(
             device.id,
             action="start_task",
-            params=params,
+            params=copy.deepcopy(command_params),
             user_id=account.id,
         )
         command_payload = command.to_response(
             user_id=account.id,
-            params=params,
+            params=copy.deepcopy(command_params),
             status_override="sent",
             sent_at=now,
         )
@@ -845,6 +1110,7 @@ async def _start_job_execution(
         targets_payload.append(
             {
                 "device_id": device.id,
+                "device_name": device.device_name,
                 "command_id": command.id if sent else None,
                 "status": status_flag,
                 "sent_at": sent_at,

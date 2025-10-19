@@ -2,6 +2,7 @@ package com.automation.application.runtime;
 
 import android.content.Context;
 
+import androidx.annotation.Nullable;
 import androidx.test.uiautomator.UiDevice;
 
 import com.automation.infrastructure.system.AppManager;
@@ -27,6 +28,7 @@ import com.automation.application.scenario.ScenarioCatalog;
 import com.automation.application.scenario.ScenarioParameterBinder;
 import com.automation.application.scenario.ScenarioRunCoordinator;
 import com.automation.application.scenario.ScenarioTaskService;
+import com.automation.application.scenario.TemplateAssetManager;
 import com.automation.domain.scenario.ScenarioContext;
 import com.automation.domain.scenario.ScriptRunGuard;
 import com.automation.domain.scenario.ScenarioRunner;
@@ -65,6 +67,7 @@ public final class CommandExecutionEngine {
     private final ScenarioTaskService scenarioTaskService;
     private final CommandBus commandBus = new CommandBus();
     private final CommandRegistry commandRegistry = new CommandRegistry(commandBus);
+    private TemplateAssetManager assetManager;
 
     public CommandExecutionEngine(Context appContext,
                                   Context instrumentationContext,
@@ -96,6 +99,11 @@ public final class CommandExecutionEngine {
         );
         registerInterceptors();
         registerModules();
+    }
+
+    public void setAssetManager(@Nullable TemplateAssetManager manager) {
+        this.assetManager = manager;
+        this.scenarioParameterBinder.setAssetManager(manager);
     }
 
     public CommandResult execute(CommandContext context, String action, JSONObject params) throws Exception {

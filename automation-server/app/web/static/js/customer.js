@@ -189,11 +189,9 @@ async function loadProfile() {
   }
   const labLink = document.getElementById("scriptLabLink");
   if (labLink) {
-    if (profile.role === "admin" || profile.role === "super_admin") {
-      labLink.hidden = false;
-    } else {
-      labLink.hidden = true;
-    }
+    const isAdmin = profile.role === "admin" || profile.role === "super_admin";
+    labLink.hidden = !isAdmin;
+    labLink.style.display = isAdmin ? "inline-block" : "none";
   }
 }
 
@@ -586,43 +584,71 @@ function openTemplateForm(mode, script, template = null) {
   openModal(customerElements.templateFormModal);
 }
 
+const FILE_PARAM_TYPES = new Set(["file", "image"]);
+
 function populateParameterInputs(parameters, existingConfig, scriptName) {
   if (!customerElements.templateParameters) return;
   if (!parameters.length) {
     customerElements.templateParameters.innerHTML = '<p class="muted">脚本未声明参数。</p>';
     return;
   }
-  const items = parameters
+  const rows = parameters
     .map((param) => {
-      const paramLabel = escapeHtml(param.name);
-      const paramAttr = param.name.replace(/"/g, "&quot;");
+      const paramType = (param.type || "").toLowerCase();
+      const paramNameAttr = param.name.replace(/"/g, "&quot;");
       const inputId = `param-${param.name.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
-      const typeHint = (param.type || "").toLowerCase();
-      const isObjectLike = ["object", "array"].includes(typeHint);
-      const isTaskName = param.name === "task_name";
-      const existingValue = getValueByPath(existingConfig, param.name);
-      const effectiveValue =
-        isTaskName && scriptName ? scriptName : existingValue !== undefined ? existingValue : param.default;
-      const displayValue = formatInputValue(effectiveValue, param.type);
       const requiredBadge = param.required ? '<span class="badge badge-warning">必填</span>' : "";
       const typeMeta = param.type ? `<span class="parameter-type"> · 类型: ${escapeHtml(param.type)}</span>` : "";
+      const descriptionLine = param.description ? `<span class="parameter-hint">${escapeHtml(param.description)}</span>` : "";
+      const isTaskName = param.name === "task_name";
+      const existingValue = getValueByPath(existingConfig, param.name);
+
+      if (FILE_PARAM_TYPES.has(paramType)) {
+        const metadata = existingValue && typeof existingValue === "object" ? existingValue : null;
+        const currentLabel = metadata
+          ? escapeHtml(metadata.name || metadata.file_name || metadata.asset_id || metadata.value || "已上传")
+          : "尚未选择文件";
+        const sizeLabel = metadata?.size ? ` · ${formatBytes(metadata.size)}` : "";
+        const hiddenValue = metadata ? escapeHtml(JSON.stringify(metadata)) : "";
+        const accept = paramType === "image" ? "image/*" : "*/*";
+        return `
+          <div class="form-row parameter-file" data-parameter data-param-name="${paramNameAttr}" data-param-type="${paramType}">
+              <label class="param-label" for="${inputId}">
+                  ${escapeHtml(param.name)} ${requiredBadge}${typeMeta}
+              </label>
+              <input type="hidden" data-file-metadata value="${hiddenValue}">
+              <div class="file-input-group">
+                  <input class="form-control file-upload-input" type="file" id="${inputId}" data-param-file="${paramNameAttr}" accept="${accept}">
+                  <button type="button" class="btn btn--ghost btn--sm" data-action="clear-file" data-param-file="${paramNameAttr}">清除</button>
+              </div>
+              <div class="parameter-hint parameter-file-status" data-param-file-status="${paramNameAttr}">
+                  当前：${currentLabel}${sizeLabel}
+              </div>
+              ${descriptionLine}
+          </div>
+        `;
+      }
+
       const defaultDisplay =
         param.default !== undefined && param.default !== null
           ? escapeHtml(formatDisplayValue(param.default))
           : "未设置";
-      const descriptionLine = param.description ? `<span class="parameter-hint">${escapeHtml(param.description)}</span>` : "";
+      const effectiveValue =
+        isTaskName && scriptName ? scriptName : existingValue !== undefined ? existingValue : param.default;
+      const displayValue = formatInputValue(effectiveValue, param.type);
+      const readOnlyAttr = isTaskName ? " readonly" : "";
       const readonlyHint = isTaskName
         ? '<span class="parameter-hint">该字段由系统自动填写，需与脚本能力保持一致。</span>'
         : "";
-      const readOnlyAttr = isTaskName ? " readonly" : "";
+      const isObjectLike = ["object", "array"].includes(paramType);
       const escapedValue = escapeHtml(displayValue);
       const inputField = isObjectLike
-        ? `<textarea class="form-control"${readOnlyAttr} rows="3" id="${inputId}" data-param-name="${paramAttr}">${escapedValue}</textarea>`
-        : `<input class="form-control"${readOnlyAttr} type="text" id="${inputId}" data-param-name="${paramAttr}" value="${escapedValue}">`;
+        ? `<textarea class="form-control"${readOnlyAttr} rows="3" id="${inputId}" data-param-name="${paramNameAttr}">${escapedValue}</textarea>`
+        : `<input class="form-control"${readOnlyAttr} type="text" id="${inputId}" data-param-name="${paramNameAttr}" value="${escapedValue}">`;
       return `
-        <div class="form-row" data-parameter>
+        <div class="form-row" data-parameter data-param-name="${paramNameAttr}" data-param-type="${paramType}">
             <label class="param-label" for="${inputId}">
-                ${paramLabel} ${requiredBadge}${typeMeta}
+                ${escapeHtml(param.name)} ${requiredBadge}${typeMeta}
             </label>
             ${inputField}
             <span class="parameter-hint">默认值: ${defaultDisplay}</span>
@@ -632,7 +658,120 @@ function populateParameterInputs(parameters, existingConfig, scriptName) {
       `;
     })
     .join("");
-  customerElements.templateParameters.innerHTML = items;
+  customerElements.templateParameters.innerHTML = rows;
+  bindParameterFileInputs(parameters);
+}
+
+function bindParameterFileInputs(parameters) {
+  if (!customerElements.templateParameters) return;
+  const fileParams = parameters.filter((param) => FILE_PARAM_TYPES.has((param.type || "").toLowerCase()));
+  if (!fileParams.length) return;
+
+  fileParams.forEach((param) => {
+    const selector = `[data-parameter][data-param-name="${CSS.escape(param.name)}"]`;
+    const row = customerElements.templateParameters.querySelector(selector);
+    if (!row) return;
+    const fileInput = row.querySelector(`[data-param-file]`);
+    const clearBtn = row.querySelector('[data-action="clear-file"]');
+    if (fileInput) {
+      fileInput.addEventListener("change", async (event) => {
+        const file = event.target.files?.[0];
+        const statusEl = row.querySelector(".parameter-file-status");
+        if (!file) {
+          setFileFieldMetadata(row, null);
+          if (statusEl) statusEl.textContent = "尚未选择文件";
+          return;
+        }
+        if (statusEl) {
+          statusEl.textContent = "上传中...";
+          statusEl.classList.remove("error");
+        }
+        try {
+          const asset = await uploadTemplateAsset(file);
+          const payload = {
+            type: (param.type || "file").toLowerCase(),
+            source: "asset",
+            asset_id: asset.id,
+            name: asset.file_name,
+            mime: asset.content_type,
+            size: asset.size_bytes,
+            checksum: asset.checksum_sha256,
+            download_url: asset.download_url || "",
+          };
+          if (asset.download_url) {
+            try {
+              const url = new URL(asset.download_url, window.location.origin);
+              payload.download_path = url.pathname;
+            } catch (e) {
+              payload.download_path = asset.download_url;
+            }
+          }
+          setFileFieldMetadata(row, payload);
+          if (statusEl) {
+            statusEl.textContent = `当前：${asset.file_name || asset.id} · ${formatBytes(asset.size_bytes)}`;
+            statusEl.classList.remove("error");
+          }
+        } catch (error) {
+          console.error("上传脚本资源失败", error);
+          setFileFieldMetadata(row, null);
+          if (statusEl) {
+            statusEl.textContent = `上传失败: ${error.message || "网络错误"}`;
+            statusEl.classList.add("error");
+          }
+        } finally {
+          event.target.value = "";
+        }
+      });
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        setFileFieldMetadata(row, null);
+        const statusEl = row.querySelector(".parameter-file-status");
+        if (statusEl) {
+          statusEl.textContent = "尚未选择文件";
+          statusEl.classList.remove("error");
+        }
+      });
+    }
+  });
+}
+
+async function uploadTemplateAsset(file) {
+  if (!customerState.token) {
+    throw new Error("未登录或会话失效");
+  }
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch("/api/customer/assets", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${customerState.token}`,
+    },
+    body: formData,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.detail || payload.message || "上传失败");
+  }
+  return payload;
+}
+
+function setFileFieldMetadata(row, metadata) {
+  const hidden = row.querySelector("input[data-file-metadata]");
+  if (!hidden) return;
+  hidden.value = metadata ? JSON.stringify(metadata) : "";
+}
+
+function formatBytes(size) {
+  if (!size || Number.isNaN(size)) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let index = 0;
+  let value = size;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
+  return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function openModal(modal) {
@@ -672,9 +811,34 @@ function buildConfigFromForm(parameters) {
   const config = {};
   const missing = [];
   parameters.forEach((param) => {
-    const field = customerElements.templateParameters?.querySelector(
-      `[data-param-name="${CSS.escape(param.name)}"]`
+    const container = customerElements.templateParameters?.querySelector(
+      `[data-parameter][data-param-name="${CSS.escape(param.name)}"]`
     );
+    const paramType = (param.type || "string").toLowerCase();
+    if (FILE_PARAM_TYPES.has(paramType)) {
+      const hidden = container?.querySelector("input[data-file-metadata]");
+      const jsonValue = hidden?.value?.trim();
+      if (!jsonValue) {
+        if (param.required) {
+          missing.push(param.name);
+        }
+        return;
+      }
+      try {
+        const payload = JSON.parse(jsonValue);
+        assignPath(config, param.name, payload);
+      } catch (error) {
+        throw new Error(`参数 ${param.name} 格式错误: ${error.message}`);
+      }
+      return;
+    }
+    const field = container?.querySelector(`[data-param-name="${CSS.escape(param.name)}"]`);
+    if (!field) {
+      if (param.required && (param.default === undefined || param.default === null)) {
+        missing.push(param.name);
+      }
+      return;
+    }
     if (param.name === "task_name") {
       const fallbackDefault = param.default !== undefined && param.default !== null ? param.default : "";
       const fieldValue = field ? field.value.trim() : "";

@@ -388,6 +388,7 @@ def _job_to_response(job: ScriptJob, targets: Iterable[ScriptJobTarget]) -> Scri
             ScriptJobTargetResponse(
                 id=target.id,
                 device_id=target.device_id,
+                device_name=getattr(target, "device_name", None),
                 command_id=target.command_id,
                 status=target.status,
                 sent_at=target.sent_at,
